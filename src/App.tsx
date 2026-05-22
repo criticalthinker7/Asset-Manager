@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import canGrantsLogo from "@assets/powered_by_BetterHalf_Films_1776198273226.png";
+const canGrantsLogo = "/cangrants-logo.png";
 
 const CA_PROVINCES = [
   "Alberta","British Columbia","Manitoba","New Brunswick",
