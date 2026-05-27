@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="CanGrants">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B2215"/>
+      <stop offset="100%" stop-color="#163D28"/>
+    </linearGradient>
+  </defs>
+  <circle cx="60" cy="60" r="58" fill="url(#bg)" stroke="#C8A84B" stroke-width="3"/>
+  <path fill="#C8A84B" d="M60 28c-8 0-14 6-14 14 0 6 4 11 9 13v3h10v-3c5-2 9-7 9-13 0-8-6-14-14-14zm0 8c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6 2.7-6 6-6z"/>
+  <text x="60" y="92" text-anchor="middle" fill="#F4EFE6" font-family="Georgia, serif" font-size="22" font-weight="700">CG</text>
+</svg>
