@@ -4,7 +4,8 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
 export default defineConfig({
-  base: "/cangrants/",
+  // Hostinger: /cangrants/ · Vercel sets VERCEL=1 at build time → root
+  base: process.env.VERCEL ? "/" : "/cangrants/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {
