@@ -17,10 +17,18 @@ The app runs at http://localhost:5173.
 
 ## Scripts
 
-- `npm run dev` — local dev server with HMR
+- `npm run dev` — Vite dev server (UI only; APIs need `vercel dev`)
 - `npm run build` — production build to `dist/`
 - `npm run preview` — serve the built app locally
 - `npm run typecheck` — TypeScript check without emit
+
+## Wishlist & newsletter (Google Sheets)
+
+Submissions go to Vercel APIs (`api/wishlist.ts`, `api/newsletter.ts`) and append rows via a Google service account.
+
+**Setup:** [docs/GOOGLE-SHEETS-SETUP.md](docs/GOOGLE-SHEETS-SETUP.md)  
+**Env template:** [.env.example](.env.example)  
+**Vercel project:** `cangrants-betterhalf` — set `GOOGLE_*` variables in the dashboard (never in client code).
 
 ## Project layout
 

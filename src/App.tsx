@@ -1,5 +1,5 @@
-import { useState, useRef, useEffect } from "react";
-const canGrantsLogo = "/cangrants-logo.png";
+import { useState, useRef, useEffect, type FormEvent } from "react";
+const canGrantsLogo = `${import.meta.env.BASE_URL}cangrants-logo.png`;
 
 const CA_PROVINCES = [
   "Alberta","British Columbia","Manitoba","New Brunswick",
@@ -71,6 +71,11 @@ const getDeadlineStatus = (close: string) => {
 const ALL_DISCIPLINES = [...new Set(GRANTS.flatMap(g => g.discipline))].sort();
 const ALL_TAGS = [...new Set(GRANTS.flatMap(g => g.tags))].sort();
 const validatePostal = (v: string) => /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/.test(v.trim());
+const formatGrantDate = (value: string) => (
+  value === "Rolling"
+    ? "Rolling"
+    : new Date(value).toLocaleDateString("en-CA", { month:"long", day:"numeric", year:"numeric" })
+);
 
 interface Grant {
   id: number;
@@ -95,10 +100,314 @@ interface UserInfo {
   career?: string;
 }
 
+type ChatMessage = {
+  role: "assistant" | "user";
+  content: string;
+};
+
+type CaptureSource = "homepage" | "signout_prompt";
+type SubmissionStatus = "idle" | "submitting" | "success" | "error";
+
+type WishlistValues = {
+  name: string;
+  email: string;
+  city: string;
+  country: string;
+  website: string;
+};
+
+type NewsletterValues = {
+  name: string;
+  email: string;
+  website: string;
+};
+
+const WISHLIST_HEADLINE = "Did you find this web app useful in your work? Please add your name to the wishlist to make it happen.";
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const captureLabelStyle = { display:"block", fontSize:11, fontWeight:600, color:"#A8C5A0", letterSpacing:"1px", textTransform:"uppercase", marginBottom:6 } as const;
+const captureInputStyle = { width:"100%", padding:"11px 13px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(200,168,75,0.28)", borderRadius:8, color:"#F4EFE6", fontSize:14, fontFamily:"'DM Sans',sans-serif", outline:"none", boxSizing:"border-box" } as const;
+const captureErrorStyle = { fontSize:12, color:"#F08A72", marginTop:8, lineHeight:1.5 } as const;
+const captureSuccessStyle = { fontSize:12, color:"#A8C5A0", marginTop:8, lineHeight:1.5 } as const;
+
+const postCapture = async (path: string, payload: Record<string, string>) => {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const data = await response.json().catch(() => null);
+    throw new Error(data?.error || "Unable to save submission");
+  }
+};
+
+const getLocalAssistantResponse = (prompt: string, user: UserInfo) => {
+  const q = prompt.toLowerCase();
+  const upcoming = GRANTS
+    .map(grant => ({ grant, status: getDeadlineStatus(grant.close) }))
+    .filter(({ status }) => status.days >= 0 && status.days !== Infinity)
+    .sort((a, b) => a.status.days - b.status.days);
+
+  if (q.includes("urgent") || q.includes("deadline")) {
+    const lines = upcoming.slice(0, 5).map(({ grant, status }) =>
+      `- ${grant.name} (${grant.org}) - ${formatGrantDate(grant.close)} - ${status.label} - ${grant.amount}`
+    );
+    return `The most urgent upcoming deadlines are:\n\n${lines.join("\n")}\n\nI would prioritize anything under 14 days first, then move grants in the 15-45 day window into your tracker.`;
+  }
+
+  if (q.includes("eligible") || q.includes("eligibility")) {
+    const matches = GRANTS
+      .filter(grant =>
+        (!user.discipline || grant.discipline.includes(user.discipline)) &&
+        (!user.province || grant.location === "Canada" || grant.tags.includes(user.province))
+      )
+      .slice(0, 5);
+    const lines = matches.map(grant =>
+      `- ${grant.name} (${grant.org}) - ${grant.amount}: ${grant.eligibility}`
+    );
+    return `Based on your profile, these are strong places to start:\n\n${lines.join("\n")}\n\nOpen each grant's Details panel to confirm fit before applying.`;
+  }
+
+  if (q.includes("draft") || q.includes("proposal") || q.includes("artist statement") || q.includes("project summary")) {
+    return `Here is a starter structure you can adapt:\n\n- Project overview: one clear paragraph describing the work, audience, and why now.\n- Artistic rationale: connect the project to your practice, community, and point of view.\n- Impact: describe who the work serves and what changes because it exists.\n- Work plan: list the major production steps, timeline, and collaborators.\n- Budget fit: connect the requested amount to concrete creative needs.\n\nShare the grant name and project details, and I can shape this into a more specific draft.`;
+  }
+
+  return `I can help with deadline triage, eligibility matching, application tracking, and proposal drafts. Try asking: "What are the most urgent deadlines?" or "Which grants am I eligible for?"`;
+};
+
 function CanGrantsLogoImg({ size = "md" }: { size?: "lg" | "md" | "sm" }) {
   const dim = size === "lg" ? 80 : size === "sm" ? 40 : 55;
   return (
     <img src={canGrantsLogo} alt="CanGrants powered by BetterHalf Films" style={{ width:dim, height:dim, borderRadius:"50%", objectFit:"cover" }} />
+  );
+}
+
+function CaptureInput({ label, value, onChange, type = "text", placeholder, disabled = false }: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  type?: string;
+  placeholder?: string;
+  disabled?: boolean;
+}) {
+  return (
+    <div>
+      <label style={captureLabelStyle}>{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        style={{ ...captureInputStyle, opacity:disabled ? 0.65 : 1 }}
+      />
+    </div>
+  );
+}
+
+function WishlistForm({ source, initialValues = {}, submitLabel = "Join the Wishlist", onSuccess }: {
+  source: CaptureSource;
+  initialValues?: Partial<WishlistValues>;
+  submitLabel?: string;
+  onSuccess?: () => void;
+}) {
+  const [values, setValues] = useState<WishlistValues>(() => ({
+    name: initialValues.name || "",
+    email: initialValues.email || "",
+    city: initialValues.city || "",
+    country: initialValues.country || "Canada",
+    website: "",
+  }));
+  const [status, setStatus] = useState<SubmissionStatus>("idle");
+  const [message, setMessage] = useState("");
+
+  const update = (field: keyof WishlistValues, value: string) => {
+    setValues(prev => ({ ...prev, [field]: value }));
+    if (status !== "submitting") {
+      setStatus("idle");
+      setMessage("");
+    }
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    const name = values.name.trim();
+    const email = values.email.trim();
+    const city = values.city.trim();
+    const country = values.country.trim();
+
+    if (!name || !email || !city || !country) {
+      setStatus("error");
+      setMessage("Please add your name, email, city, and country.");
+      return;
+    }
+
+    if (!EMAIL_PATTERN.test(email)) {
+      setStatus("error");
+      setMessage("Please enter a valid email address.");
+      return;
+    }
+
+    setStatus("submitting");
+    setMessage("");
+
+    try {
+      await postCapture("/api/wishlist", { name, email, city, country, source, website: values.website });
+      setStatus("success");
+      setMessage("You're on the wishlist. Thank you for helping shape CanGrants.");
+      onSuccess?.();
+    } catch {
+      setStatus("error");
+      setMessage("We couldn't save your details. Please try again.");
+    }
+  };
+
+  const disabled = status === "submitting" || status === "success";
+
+  return (
+    <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", gap:12 }}>
+      <input value={values.website} onChange={e => update("website", e.target.value)} tabIndex={-1} autoComplete="off" style={{ display:"none" }} aria-hidden="true" />
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(160px,1fr))", gap:12 }}>
+        <CaptureInput label="Name" value={values.name} onChange={value => update("name", value)} placeholder="Your name" disabled={disabled} />
+        <CaptureInput label="Email" value={values.email} onChange={value => update("email", value)} type="email" placeholder="you@email.com" disabled={disabled} />
+        <CaptureInput label="City" value={values.city} onChange={value => update("city", value)} placeholder="Toronto" disabled={disabled} />
+        <CaptureInput label="Country" value={values.country} onChange={value => update("country", value)} placeholder="Canada" disabled={disabled} />
+      </div>
+      <button
+        type="submit"
+        disabled={disabled}
+        style={{ padding:"12px 18px", borderRadius:8, border:"none", background:disabled?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:14, fontWeight:700, cursor:disabled?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", alignSelf:"flex-start" }}
+      >
+        {status === "submitting" ? "Saving..." : submitLabel}
+      </button>
+      {message && <div style={status === "success" ? captureSuccessStyle : captureErrorStyle}>{message}</div>}
+    </form>
+  );
+}
+
+function NewsletterForm({ source }: { source: CaptureSource }) {
+  const [values, setValues] = useState<NewsletterValues>({ name:"", email:"", website:"" });
+  const [status, setStatus] = useState<SubmissionStatus>("idle");
+  const [message, setMessage] = useState("");
+
+  const update = (field: keyof NewsletterValues, value: string) => {
+    setValues(prev => ({ ...prev, [field]: value }));
+    if (status !== "submitting") {
+      setStatus("idle");
+      setMessage("");
+    }
+  };
+
+  const handleSubmit = async (event: FormEvent) => {
+    event.preventDefault();
+    const name = values.name.trim();
+    const email = values.email.trim();
+
+    if (!email) {
+      setStatus("error");
+      setMessage("Please add your email address.");
+      return;
+    }
+
+    if (!EMAIL_PATTERN.test(email)) {
+      setStatus("error");
+      setMessage("Please enter a valid email address.");
+      return;
+    }
+
+    setStatus("submitting");
+    setMessage("");
+
+    try {
+      await postCapture("/api/newsletter", { name, email, source, website: values.website });
+      setStatus("success");
+      setMessage("You're subscribed. We'll send CanGrants updates when there is something useful to share.");
+    } catch {
+      setStatus("error");
+      setMessage("We couldn't save your email. Please try again.");
+    }
+  };
+
+  const disabled = status === "submitting" || status === "success";
+
+  return (
+    <form onSubmit={handleSubmit} style={{ display:"flex", flexDirection:"column", gap:12 }}>
+      <input value={values.website} onChange={e => update("website", e.target.value)} tabIndex={-1} autoComplete="off" style={{ display:"none" }} aria-hidden="true" />
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))", gap:12 }}>
+        <CaptureInput label="Name" value={values.name} onChange={value => update("name", value)} placeholder="Optional" disabled={disabled} />
+        <CaptureInput label="Email" value={values.email} onChange={value => update("email", value)} type="email" placeholder="you@email.com" disabled={disabled} />
+      </div>
+      <button
+        type="submit"
+        disabled={disabled}
+        style={{ padding:"12px 18px", borderRadius:8, border:"1px solid rgba(200,168,75,0.45)", background:disabled?"rgba(200,168,75,0.12)":"transparent", color:disabled?"#7A8A7A":"#C8A84B", fontSize:14, fontWeight:700, cursor:disabled?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", alignSelf:"flex-start" }}
+      >
+        {status === "submitting" ? "Subscribing..." : "Subscribe"}
+      </button>
+      {message && <div style={status === "success" ? captureSuccessStyle : captureErrorStyle}>{message}</div>}
+    </form>
+  );
+}
+
+function HomepageCaptureSection() {
+  return (
+    <section style={{ width:"100%", borderTop:"1px solid rgba(200,168,75,0.18)", borderBottom:"1px solid rgba(200,168,75,0.14)", padding:"34px 0 38px", margin:"0 0 60px", textAlign:"left" }}>
+      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))", gap:34, alignItems:"start" }}>
+        <div>
+          <div style={{ fontSize:11, letterSpacing:"3px", color:"#C8A84B", textTransform:"uppercase", marginBottom:12, fontWeight:700 }}>Wishlist</div>
+          <h2 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"clamp(28px,4vw,42px)", lineHeight:1.05, margin:"0 0 12px", color:"#F4EFE6" }}>{WISHLIST_HEADLINE}</h2>
+          <p style={{ fontSize:13, color:"#8A9C8A", lineHeight:1.7, margin:"0 0 22px", maxWidth:520 }}>We'll only use this to track CanGrants interest and follow up about the project.</p>
+          <WishlistForm source="homepage" />
+        </div>
+        <div>
+          <div style={{ fontSize:11, letterSpacing:"3px", color:"#A8C5A0", textTransform:"uppercase", marginBottom:12, fontWeight:700 }}>Newsletter</div>
+          <h2 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"clamp(26px,3vw,36px)", lineHeight:1.12, margin:"0 0 12px", color:"#F4EFE6" }}>Get occasional CanGrants updates.</h2>
+          <p style={{ fontSize:13, color:"#8A9C8A", lineHeight:1.7, margin:"0 0 22px", maxWidth:460 }}>A quiet note when the grant list, AI tools, or launch plans move forward.</p>
+          <NewsletterForm source="homepage" />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SignOutWishlistSheet({ user, onClose, onSignOut }: {
+  user: UserInfo;
+  onClose: () => void;
+  onSignOut: () => void;
+}) {
+  const [showForm, setShowForm] = useState(false);
+
+  const handleSaved = () => {
+    window.setTimeout(onSignOut, 1200);
+  };
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:300, background:"rgba(0,0,0,0.48)", display:"flex", alignItems:"flex-end", justifyContent:"center", padding:"20px" }}>
+      <div style={{ width:"100%", maxWidth:720, background:"#0B2215", color:"#F4EFE6", border:"1px solid rgba(200,168,75,0.28)", borderRadius:8, boxShadow:"0 -12px 50px rgba(0,0,0,0.35)", padding:"24px", position:"relative" }}>
+        <button onClick={onClose} aria-label="Close" style={{ position:"absolute", top:14, right:14, width:30, height:30, borderRadius:8, border:"1px solid rgba(200,168,75,0.25)", background:"transparent", color:"#C8A84B", cursor:"pointer", fontSize:18, lineHeight:1 }}>x</button>
+        {!showForm ? (
+          <>
+            <div style={{ fontSize:11, letterSpacing:"3px", color:"#C8A84B", textTransform:"uppercase", marginBottom:12, fontWeight:700 }}>Before you go</div>
+            <h2 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"clamp(28px,4vw,40px)", lineHeight:1.08, margin:"0 40px 12px 0" }}>{WISHLIST_HEADLINE}</h2>
+            <p style={{ color:"#8A9C8A", fontSize:14, lineHeight:1.7, margin:"0 0 22px", maxWidth:560 }}>Your response helps measure early interest from test users.</p>
+            <div style={{ display:"flex", gap:12, flexWrap:"wrap" }}>
+              <button onClick={() => setShowForm(true)} style={{ padding:"12px 18px", borderRadius:8, border:"none", background:"#C8A84B", color:"#0B2215", fontSize:14, fontWeight:700, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>Yes, add me</button>
+              <button onClick={onSignOut} style={{ padding:"12px 18px", borderRadius:8, border:"1px solid rgba(200,168,75,0.38)", background:"transparent", color:"#C8A84B", fontSize:14, fontWeight:600, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>No, sign out</button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div style={{ fontSize:11, letterSpacing:"3px", color:"#C8A84B", textTransform:"uppercase", marginBottom:12, fontWeight:700 }}>Wishlist</div>
+            <h2 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:"clamp(28px,4vw,38px)", lineHeight:1.08, margin:"0 40px 10px 0" }}>Add your name before you sign out.</h2>
+            <p style={{ color:"#8A9C8A", fontSize:14, lineHeight:1.7, margin:"0 0 20px", maxWidth:560 }}>Name and email are filled from your account when available.</p>
+            <WishlistForm source="signout_prompt" initialValues={{ name:user.name, email:user.email, country:"Canada" }} submitLabel="Add me and sign out" onSuccess={handleSaved} />
+            <button onClick={onSignOut} style={{ marginTop:14, padding:0, border:"none", background:"transparent", color:"#6A9C6A", fontSize:13, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>Sign out without adding</button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -236,6 +545,8 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
                 </div>
               ))}
             </div>
+
+            <HomepageCaptureSection />
           </div>
         )}
 
@@ -336,13 +647,14 @@ function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void })
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({ discipline:"", location:"", tag:"", deadline:"" });
   const [saved, setSaved] = useState(new Set([1,7,23]));
+  const [showSignOutPrompt, setShowSignOutPrompt] = useState(false);
   const [applications, setApplications] = useState([
     { id:7, status:"In Progress", notes:"TAC Film & Media \u2014 draft 80% done" },
     { id:28, status:"Submitted", notes:"MAC Matchmaker \u2014 submitted March 2026" },
     { id:23, status:"Not Started", notes:"" }
   ]);
   const [selectedGrant, setSelectedGrant] = useState<Grant | null>(null);
-  const [messages, setMessages] = useState([
+  const [messages, setMessages] = useState<ChatMessage[]>([
     { role:"assistant" as const, content:`Welcome back, ${user.name}!\n\nI'm your CanGrants AI assistant. I can help you find the right grants, check your eligibility, and draft compelling proposals. What would you like to work on today?` }
   ]);
   const [input, setInput] = useState("");
@@ -359,7 +671,7 @@ function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void })
     const matchTag = !filters.tag || g.tags.includes(filters.tag);
     const matchDead = !filters.deadline || (() => {
       if (filters.deadline==="rolling") return g.close==="Rolling";
-      if (filters.deadline==="urgent") return getDeadlineStatus(g.close).days<=14;
+      if (filters.deadline==="urgent") { const d=getDeadlineStatus(g.close); return d.days>=0&&d.days<=14; }
       if (filters.deadline==="month") { const d=getDeadlineStatus(g.close); return d.days>14&&d.days<=45; }
       return true;
     })();
@@ -385,9 +697,10 @@ function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void })
           userDiscipline: user.discipline || "",
         })
       });
+      if (!res.ok) throw new Error("Chat API unavailable");
       const data = await res.json();
-      setMessages(p=>[...p,{role:"assistant" as const,content:data.content||"Sorry, try again."}]);
-    } catch { setMessages(p=>[...p,{role:"assistant" as const,content:"Connection error. Please try again."}]); }
+      setMessages(p=>[...p,{role:"assistant" as const,content:data.content||getLocalAssistantResponse(userMsg.content, user)}]);
+    } catch { setMessages(p=>[...p,{role:"assistant" as const,content:getLocalAssistantResponse(userMsg.content, user)}]); }
     setLoading(false);
   };
 
@@ -414,7 +727,7 @@ function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void })
           </nav>
           <div style={{ width:1, height:24, background:"rgba(200,168,75,0.2)", margin:"0 8px" }}/>
           <div style={{ fontSize:12, color:"#6A9C6A", marginRight:8 }}>{user.name.split(" ")[0]}</div>
-          <button onClick={onLogout} style={{ padding:"6px 12px", borderRadius:6, border:"1px solid rgba(200,168,75,0.3)", background:"transparent", color:"#C8A84B", fontSize:11, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>Sign Out</button>
+          <button onClick={() => setShowSignOutPrompt(true)} style={{ padding:"6px 12px", borderRadius:6, border:"1px solid rgba(200,168,75,0.3)", background:"transparent", color:"#C8A84B", fontSize:11, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>Sign Out</button>
         </div>
       </header>
 
@@ -645,6 +958,10 @@ function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void })
             </div>
           </div>
         </div>
+      )}
+
+      {showSignOutPrompt && (
+        <SignOutWishlistSheet user={user} onClose={() => setShowSignOutPrompt(false)} onSignOut={onLogout} />
       )}
 
       <style>{`
