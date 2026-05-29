@@ -7,7 +7,7 @@ import {
   ok,
   parseJsonBody,
   serverError,
-} from "../server/googleSheets";
+} from "../server/googleSheets.js";
 
 export default {
   async fetch(request: Request) {
