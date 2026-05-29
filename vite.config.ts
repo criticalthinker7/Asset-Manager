@@ -3,7 +3,8 @@ import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 
-const appBase = process.env.VITE_BASE_PATH || "/";
+const appBase =
+  process.env.VITE_BASE_PATH || (process.env.VERCEL ? "/" : "/cangrants/");
 
 export default defineConfig({
   base: appBase,

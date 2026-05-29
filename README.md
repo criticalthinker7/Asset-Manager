@@ -1,6 +1,8 @@
 # CanGrants
 
-AI-powered grant discovery and management for Canadian artists. Built by BetterHalf Films.
+AI-powered grant discovery and management for Canadian artists and producers. Built by BetterHalf Films.
+
+**Demo login:** `demo@betterhalffilms.com` / `demo123`
 
 ## Stack
 
@@ -46,6 +48,18 @@ cangrants/
   vite.config.ts
   tsconfig.json
 ```
+
+## Wishlist (homepage interest list)
+
+The welcome page includes a wishlist banner (name, email, city, country). Submissions are stored in **Google Sheets** via Apps Script.
+
+1. Follow **[docs/WISHLIST-SETUP.md](docs/WISHLIST-SETUP.md)** to create the sheet, deploy the script, and get the web app URL.
+2. Copy [`.env.example`](.env.example) to `.env` locally, or set variables in **Vercel → Settings → Environment Variables**:
+   - `VITE_WISHLIST_ENDPOINT` — Apps Script web app URL
+   - `VITE_WISHLIST_SECRET` — (optional) shared secret for spam reduction
+3. Redeploy on Vercel after adding env vars.
+
+Export signups anytime from Google Sheets (**File → Download → CSV**).
 
 ## Notes
 
