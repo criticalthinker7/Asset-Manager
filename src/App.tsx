@@ -1,6 +1,28 @@
 import { useState, useRef, useEffect, useMemo, type FormEvent } from "react";
 import { CA_PROVINCES, getDeadlineStatus, validatePostal, type Grant } from "@/data/grants";
 import { fetchGrants, type GrantsSource } from "@/lib/grants-api";
+import {
+  authErrorMessage,
+  initAuth,
+  sendEmailCode,
+  sendMagicLink,
+  signIn,
+  signInWithGoogle,
+  signOut,
+  signUp,
+  verifyEmailCode,
+  type UserInfo,
+} from "@/lib/auth";
+import { submitNewsletter, submitWishlist } from "@/lib/captures";
+import {
+  createApplication,
+  fetchApplications,
+  fetchSavedGrantIds,
+  saveGrant,
+  unsaveGrant,
+  updateApplicationStatus,
+  type UserApplication,
+} from "@/lib/user-data";
 
 const canGrantsLogo = `${import.meta.env.BASE_URL}cangrants-logo.png`;
 
@@ -10,9 +32,8 @@ const formatGrantDate = (value: string) => (
     : new Date(value).toLocaleDateString("en-CA", { month:"long", day:"numeric", year:"numeric" })
 );
 
-interface UserInfo {
+interface UserInfoForAssistant {
   name: string;
-  email: string;
   province?: string;
   discipline?: string;
   career?: string;
@@ -48,20 +69,7 @@ const captureInputStyle = { width:"100%", padding:"11px 13px", background:"rgba(
 const captureErrorStyle = { fontSize:12, color:"#F08A72", marginTop:8, lineHeight:1.5 } as const;
 const captureSuccessStyle = { fontSize:12, color:"#A8C5A0", marginTop:8, lineHeight:1.5 } as const;
 
-const postCapture = async (path: string, payload: Record<string, string>) => {
-  const response = await fetch(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const data = await response.json().catch(() => null);
-    throw new Error(data?.error || "Unable to save submission");
-  }
-};
-
-const getLocalAssistantResponse = (prompt: string, user: UserInfo, grants: Grant[]) => {
+const getLocalAssistantResponse = (prompt: string, user: UserInfoForAssistant, grants: Grant[]) => {
   const q = prompt.toLowerCase();
   const upcoming = grants
     .map(grant => ({ grant, status: getDeadlineStatus(grant.close) }))
@@ -172,7 +180,7 @@ function WishlistForm({ source, initialValues = {}, submitLabel = "Join the Wish
     setMessage("");
 
     try {
-      await postCapture("/api/wishlist", { name, email, city, country, source, website: values.website });
+      await submitWishlist({ name, email, city, country, source });
       setStatus("success");
       setMessage("You're on the wishlist. Thank you for helping shape CanGrants.");
       onSuccess?.();
@@ -239,7 +247,7 @@ function NewsletterForm({ source }: { source: CaptureSource }) {
     setMessage("");
 
     try {
-      await postCapture("/api/newsletter", { name, email, source, website: values.website });
+      await submitNewsletter({ name, email, source });
       setStatus("success");
       setMessage("You're subscribed. We'll send CanGrants updates when there is something useful to share.");
     } catch {
@@ -329,14 +337,65 @@ function SignOutWishlistSheet({ user, onClose, onSignOut }: {
   );
 }
 
+function AuthDivider({ label = "or" }: { label?: string }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:12, margin:"20px 0" }}>
+      <div style={{ flex:1, height:1, background:"rgba(200,168,75,0.2)" }}/>
+      <span style={{ fontSize:12, color:"#6A8C6A", textTransform:"uppercase", letterSpacing:"1px" }}>{label}</span>
+      <div style={{ flex:1, height:1, background:"rgba(200,168,75,0.2)" }}/>
+    </div>
+  );
+}
+
+function GoogleSignInButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{ width:"100%", padding:"12px 14px", borderRadius:10, border:"1px solid rgba(200,168,75,0.35)", background:"rgba(255,255,255,0.06)", color:"#F4EFE6", fontSize:14, fontWeight:600, cursor:disabled?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", display:"flex", alignItems:"center", justifyContent:"center", gap:10 }}
+    >
+      <span style={{ fontSize:18, lineHeight:1 }}>G</span>
+      Continue with Google
+    </button>
+  );
+}
+
 function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
   const [mode, setMode] = useState("welcome");
   const [form, setForm] = useState({ name:"", email:"", password:"", address:"", city:"", province:"", postal:"", discipline:"", career:"" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loginForm, setLoginForm] = useState({ email:"", password:"" });
+  const [loginMethod, setLoginMethod] = useState<"password" | "magic_link" | "otp">("password");
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
   const [loginErr, setLoginErr] = useState("");
-  const [users, setUsers] = useState([{ email:"demo@betterhalffilms.com", password:"demo123", name:"Demo Artist", province:"Ontario" }]);
+  const [loginMsg, setLoginMsg] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [registerMsg, setRegisterMsg] = useState("");
   const [particles] = useState(() => Array.from({length:22}, (_,i) => ({ id:i, x:Math.random()*100, y:Math.random()*100, size: 1+Math.random()*2.5, delay:Math.random()*4, dur:3+Math.random()*5 })));
+
+  const resetLoginExtras = () => {
+    setLoginMethod("password");
+    setOtpCode("");
+    setOtpSent(false);
+    setLoginMsg("");
+    setLoginErr("");
+  };
+
+  const handleGoogleSignIn = async () => {
+    setAuthBusy(true);
+    setLoginErr("");
+    setRegisterMsg("");
+    try {
+      await signInWithGoogle();
+    } catch (err) {
+      const message = authErrorMessage(err);
+      if (mode === "register") setRegisterMsg(message);
+      else setLoginErr(message);
+      setAuthBusy(false);
+    }
+  };
 
   const validate = () => {
     const e: Record<string, string> = {};
@@ -351,18 +410,110 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
     return e;
   };
 
-  const handleRegister = () => {
+  const handleRegister = async () => {
     const e = validate();
     if (Object.keys(e).length) { setErrors(e); return; }
-    const newUser = { ...form };
-    setUsers(p => [...p, newUser]);
-    onAuth({ name: form.name, email: form.email, province: form.province, discipline: form.discipline, career: form.career });
+    setAuthBusy(true);
+    setRegisterMsg("");
+    setLoginErr("");
+    try {
+      const result = await signUp({
+        name: form.name.trim(),
+        email: form.email.trim(),
+        password: form.password,
+        province: form.province,
+        discipline: form.discipline,
+        career: form.career,
+      });
+      if (result.needsConfirmation) {
+        setRegisterMsg("Account created. Check your email for a confirmation link, then sign in.");
+        setMode("login");
+        setLoginForm({ email: form.email.trim(), password: "" });
+        resetLoginExtras();
+        return;
+      }
+      onAuth(result.user);
+    } catch (err) {
+      setRegisterMsg(authErrorMessage(err));
+    } finally {
+      setAuthBusy(false);
+    }
   };
 
-  const handleLogin = () => {
-    const u = users.find(u => u.email === loginForm.email && u.password === loginForm.password);
-    if (!u) { setLoginErr("Invalid email or password."); return; }
-    onAuth({ name: u.name, email: u.email, province: u.province });
+  const handleLogin = async () => {
+    setAuthBusy(true);
+    setLoginErr("");
+    setLoginMsg("");
+    try {
+      const user = await signIn(loginForm.email.trim(), loginForm.password);
+      onAuth(user);
+    } catch (err) {
+      setLoginErr(authErrorMessage(err));
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleSendMagicLink = async () => {
+    const email = loginForm.email.trim();
+    if (!EMAIL_PATTERN.test(email)) {
+      setLoginErr("Enter a valid email address first.");
+      return;
+    }
+    setAuthBusy(true);
+    setLoginErr("");
+    setLoginMsg("");
+    try {
+      await sendMagicLink(email);
+      setLoginMsg("Sign-in link sent. Check your email and click the link to continue.");
+    } catch (err) {
+      setLoginErr(authErrorMessage(err));
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleSendOtp = async () => {
+    const email = loginForm.email.trim();
+    if (!EMAIL_PATTERN.test(email)) {
+      setLoginErr("Enter a valid email address first.");
+      return;
+    }
+    setAuthBusy(true);
+    setLoginErr("");
+    setLoginMsg("");
+    try {
+      await sendEmailCode(email);
+      setOtpSent(true);
+      setLoginMsg("One-time code sent. Check your email and enter the 6-digit code below.");
+    } catch (err) {
+      setLoginErr(authErrorMessage(err));
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleVerifyOtp = async () => {
+    const email = loginForm.email.trim();
+    if (!EMAIL_PATTERN.test(email)) {
+      setLoginErr("Enter a valid email address first.");
+      return;
+    }
+    if (otpCode.trim().length < 6) {
+      setLoginErr("Enter the 6-digit code from your email.");
+      return;
+    }
+    setAuthBusy(true);
+    setLoginErr("");
+    setLoginMsg("");
+    try {
+      const user = await verifyEmailCode(email, otpCode.trim());
+      onAuth(user);
+    } catch (err) {
+      setLoginErr(authErrorMessage(err));
+    } finally {
+      setAuthBusy(false);
+    }
   };
 
   const inp = (field: string, label: string, type="text", opts: string[] | null = null) => {
@@ -400,8 +551,8 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
       <div style={{ position:"relative", zIndex:10, padding:"20px 40px", display:"flex", justifyContent:"space-between", alignItems:"center", borderBottom:"1px solid rgba(200,168,75,0.1)" }}>
         <CanGrantsLogoImg size="sm"/>
         <div style={{ display:"flex", gap:8 }}>
-          {mode !== "login" && <button onClick={() => {setMode("login"); setErrors({});}} style={{ padding:"9px 20px", borderRadius:8, border:"1px solid rgba(200,168,75,0.4)", background:"transparent", color:"#C8A84B", fontSize:13, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:500 }}>Sign In</button>}
-          {mode !== "register" && <button onClick={() => {setMode("register"); setErrors({});}} style={{ padding:"9px 20px", borderRadius:8, border:"none", background:"#C8A84B", color:"#0B2215", fontSize:13, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:700 }}>Create Account</button>}
+          {mode !== "login" && <button onClick={() => {setMode("login"); setErrors({}); resetLoginExtras();}} style={{ padding:"9px 20px", borderRadius:8, border:"1px solid rgba(200,168,75,0.4)", background:"transparent", color:"#C8A84B", fontSize:13, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:500 }}>Sign In</button>}
+          {mode !== "register" && <button onClick={() => {setMode("register"); setErrors({}); resetLoginExtras();}} style={{ padding:"9px 20px", borderRadius:8, border:"none", background:"#C8A84B", color:"#0B2215", fontSize:13, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:700 }}>Create Account</button>}
         </div>
       </div>
 
@@ -443,7 +594,8 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
               <button onClick={() => setMode("register")} style={{ width:"100%", padding:"16px", borderRadius:12, border:"none", background:"#C8A84B", color:"#0B2215", fontSize:16, fontWeight:700, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", letterSpacing:"0.5px", marginBottom:14 }}>
                 Create Your Account {"\u2192"}
               </button>
-              <button onClick={() => setMode("login")} style={{ width:"100%", padding:"13px", borderRadius:12, border:"1px solid rgba(200,168,75,0.3)", background:"transparent", color:"#C8A84B", fontSize:14, fontWeight:500, cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>
+              <GoogleSignInButton disabled={authBusy} onClick={handleGoogleSignIn} />
+              <button onClick={() => { setMode("login"); resetLoginExtras(); }} style={{ width:"100%", padding:"13px", borderRadius:12, border:"1px solid rgba(200,168,75,0.3)", background:"transparent", color:"#C8A84B", fontSize:14, fontWeight:500, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", marginTop:14 }}>
                 I already have an account
               </button>
               <p style={{ fontSize:11, color:"#555", marginTop:14, lineHeight:1.5 }}>Registration restricted to Canadian residents \u00b7 Postal code verified</p>
@@ -469,34 +621,85 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
         )}
 
         {mode === "login" && (
-          <div style={{ display:"flex", justifyContent:"center", paddingTop:"6vh" }}>
+          <div style={{ display:"flex", justifyContent:"center", paddingTop:"6vh", paddingBottom:60 }}>
             <div style={{ width:"100%", maxWidth:440 }}>
-              <button onClick={() => setMode("welcome")} style={{ background:"none", border:"none", color:"#6A9C6A", cursor:"pointer", fontSize:13, marginBottom:24, padding:0, fontFamily:"'DM Sans',sans-serif" }}>{"\u2190"} Back</button>
+              <button onClick={() => { setMode("welcome"); resetLoginExtras(); }} style={{ background:"none", border:"none", color:"#6A9C6A", cursor:"pointer", fontSize:13, marginBottom:24, padding:0, fontFamily:"'DM Sans',sans-serif" }}>{"\u2190"} Back</button>
               <div style={{ width:40, height:2, background:"#C8A84B", marginBottom:20 }}/>
               <h2 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:36, fontWeight:700, margin:"0 0 6px" }}>Sign In</h2>
-              <p style={{ fontSize:14, color:"#6A8C6A", marginBottom:30 }}>Welcome back. Access your CanGrants dashboard.</p>
+              <p style={{ fontSize:14, color:"#6A8C6A", marginBottom:24 }}>Welcome back. Access your CanGrants dashboard.</p>
+
+              <GoogleSignInButton disabled={authBusy} onClick={handleGoogleSignIn} />
+              <AuthDivider label="or use email" />
+
+              <div style={{ display:"flex", gap:6, marginBottom:18, flexWrap:"wrap" }}>
+                {([
+                  ["password", "Password"],
+                  ["magic_link", "Email link"],
+                  ["otp", "One-time code"],
+                ] as const).map(([id, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => { setLoginMethod(id); setLoginErr(""); setLoginMsg(""); setOtpSent(false); setOtpCode(""); }}
+                    style={{ padding:"7px 12px", borderRadius:20, border:`1px solid ${loginMethod===id?"#C8A84B":"rgba(200,168,75,0.25)"}`, background:loginMethod===id?"rgba(200,168,75,0.15)":"transparent", color:loginMethod===id?"#C8A84B":"#8A9C8A", fontSize:12, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:500 }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
               <div style={{ marginBottom:14 }}>
                 <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#A8C5A0", letterSpacing:"1px", textTransform:"uppercase", marginBottom:5 }}>Email Address</label>
                 <input type="email" value={loginForm.email} onChange={e => setLoginForm(p=>({...p,email:e.target.value}))} placeholder="your@email.com"
                   style={{ width:"100%", padding:"12px 14px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(200,168,75,0.3)", borderRadius:8, color:"#F4EFE6", fontSize:14, fontFamily:"'DM Sans',sans-serif", outline:"none", boxSizing:"border-box" }}/>
               </div>
-              <div style={{ marginBottom:22 }}>
-                <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#A8C5A0", letterSpacing:"1px", textTransform:"uppercase", marginBottom:5 }}>Password</label>
-                <input type="password" value={loginForm.password} onChange={e => setLoginForm(p=>({...p,password:e.target.value}))} placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
-                  onKeyDown={e => e.key==="Enter" && handleLogin()}
-                  style={{ width:"100%", padding:"12px 14px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(200,168,75,0.3)", borderRadius:8, color:"#F4EFE6", fontSize:14, fontFamily:"'DM Sans',sans-serif", outline:"none", boxSizing:"border-box" }}/>
-              </div>
+
+              {loginMethod === "password" && (
+                <div style={{ marginBottom:22 }}>
+                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#A8C5A0", letterSpacing:"1px", textTransform:"uppercase", marginBottom:5 }}>Password</label>
+                  <input type="password" value={loginForm.password} onChange={e => setLoginForm(p=>({...p,password:e.target.value}))} placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+                    onKeyDown={e => e.key==="Enter" && handleLogin()}
+                    style={{ width:"100%", padding:"12px 14px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(200,168,75,0.3)", borderRadius:8, color:"#F4EFE6", fontSize:14, fontFamily:"'DM Sans',sans-serif", outline:"none", boxSizing:"border-box" }}/>
+                </div>
+              )}
+
+              {loginMethod === "otp" && otpSent && (
+                <div style={{ marginBottom:22 }}>
+                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#A8C5A0", letterSpacing:"1px", textTransform:"uppercase", marginBottom:5 }}>6-digit code</label>
+                  <input type="text" inputMode="numeric" maxLength={6} value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456"
+                    onKeyDown={e => e.key==="Enter" && handleVerifyOtp()}
+                    style={{ width:"100%", padding:"12px 14px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(200,168,75,0.3)", borderRadius:8, color:"#F4EFE6", fontSize:18, letterSpacing:"0.3em", fontFamily:"'DM Sans',sans-serif", outline:"none", boxSizing:"border-box" }}/>
+                </div>
+              )}
+
               {loginErr && <div style={{ background:"rgba(192,57,43,0.15)", border:"1px solid rgba(192,57,43,0.4)", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#E74C3C", marginBottom:16 }}>{loginErr}</div>}
-              <button onClick={handleLogin} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
-                Sign In {"\u2192"}
-              </button>
+              {loginMsg && <div style={{ background:"rgba(90,158,106,0.15)", border:"1px solid rgba(90,158,106,0.35)", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#A8C5A0", marginBottom:16, lineHeight:1.5 }}>{loginMsg}</div>}
+
+              {loginMethod === "password" && (
+                <button onClick={handleLogin} disabled={authBusy} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
+                  {authBusy ? "Signing in..." : <>Sign In {"\u2192"}</>}
+                </button>
+              )}
+              {loginMethod === "magic_link" && (
+                <button onClick={handleSendMagicLink} disabled={authBusy} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
+                  {authBusy ? "Sending..." : "Email me a sign-in link"}
+                </button>
+              )}
+              {loginMethod === "otp" && !otpSent && (
+                <button onClick={handleSendOtp} disabled={authBusy} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
+                  {authBusy ? "Sending..." : "Send one-time code"}
+                </button>
+              )}
+              {loginMethod === "otp" && otpSent && (
+                <button onClick={handleVerifyOtp} disabled={authBusy} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
+                  {authBusy ? "Verifying..." : "Verify code & sign in"}
+                </button>
+              )}
+
               <p style={{ textAlign:"center", fontSize:13, color:"#666" }}>
                 Don't have an account?{" "}
-                <button onClick={() => {setMode("register"); setErrors({});}} style={{ background:"none", border:"none", color:"#C8A84B", cursor:"pointer", fontSize:13, fontFamily:"'DM Sans',sans-serif", fontWeight:600 }}>Create one</button>
+                <button onClick={() => {setMode("register"); setErrors({}); resetLoginExtras();}} style={{ background:"none", border:"none", color:"#C8A84B", cursor:"pointer", fontSize:13, fontFamily:"'DM Sans',sans-serif", fontWeight:600 }}>Create one</button>
               </p>
-              <div style={{ marginTop:20, padding:"12px", background:"rgba(200,168,75,0.06)", borderRadius:8, fontSize:12, color:"#888", textAlign:"center" }}>
-                Demo: demo@betterhalffilms.com \u00b7 demo123
-              </div>
             </div>
           </div>
         )}
@@ -508,9 +711,12 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
               <div style={{ width:40, height:2, background:"#C8A84B", marginBottom:20 }}/>
               <h2 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:36, fontWeight:700, margin:"0 0 6px" }}>Create Your Account</h2>
               <p style={{ fontSize:14, color:"#6A8C6A", marginBottom:8 }}>Join CanGrants — Canada's AI-powered grant platform for artists and producers.</p>
-              <div style={{ background:"rgba(200,168,75,0.08)", border:"1px solid rgba(200,168,75,0.2)", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#B8A055", marginBottom:26 }}>
-                <strong>Canadian residents only.</strong> A valid Canadian postal code is required to create an account.
+              <div style={{ background:"rgba(200,168,75,0.08)", border:"1px solid rgba(200,168,75,0.2)", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#B8A055", marginBottom:20 }}>
+                <strong>Canadian residents only.</strong> A valid Canadian postal code is required for the full registration form. You can also use Google or email link / code on the sign-in page.
               </div>
+
+              <GoogleSignInButton disabled={authBusy} onClick={handleGoogleSignIn} />
+              <AuthDivider label="or register with email" />
 
               <div style={{ fontSize:11, fontWeight:700, color:"#C8A84B", letterSpacing:"2px", textTransform:"uppercase", marginBottom:14, paddingBottom:8, borderBottom:"1px solid rgba(200,168,75,0.15)" }}>Personal Info</div>
               {inp("name","Full Name")}
@@ -529,8 +735,10 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
               {inp("discipline","Primary Discipline","text", ["Film","Documentary","Animation","Television","Digital Media","Visual Arts","Music","Writing","Interdisciplinary","Other"])}
               {inp("career","Career Stage","text", ["Emerging (0\u20135 years)","Mid-Career (5\u201315 years)","Established (15+ years)","Student","Organization / Company"])}
 
-              <button onClick={handleRegister} style={{ width:"100%", padding:"15px", borderRadius:10, border:"none", background:"#C8A84B", color:"#0B2215", fontSize:16, fontWeight:700, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", marginTop:10, marginBottom:12, letterSpacing:"0.5px" }}>
-                Create Account & Explore Grants {"\u2192"}
+              {registerMsg && <div style={{ background:registerMsg.includes("created")?"rgba(90,158,106,0.15)":"rgba(192,57,43,0.15)", border:`1px solid ${registerMsg.includes("created")?"rgba(90,158,106,0.4)":"rgba(192,57,43,0.4)"}`, borderRadius:8, padding:"10px 14px", fontSize:13, color:registerMsg.includes("created")?"#A8C5A0":"#E74C3C", marginBottom:16 }}>{registerMsg}</div>}
+
+              <button onClick={handleRegister} disabled={authBusy} style={{ width:"100%", padding:"15px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:16, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginTop:10, marginBottom:12, letterSpacing:"0.5px" }}>
+                {authBusy ? "Creating account..." : <>Create Account & Explore Grants {"\u2192"}</>}
               </button>
               <p style={{ textAlign:"center", fontSize:13, color:"#666" }}>
                 Already have an account?{" "}
@@ -566,13 +774,10 @@ function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; o
   const [activeTab, setActiveTab] = useState("discover");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({ discipline:"", location:"", tag:"", deadline:"" });
-  const [saved, setSaved] = useState(new Set([1,7,23]));
+  const [saved, setSaved] = useState<Set<number>>(new Set());
+  const [userDataLoading, setUserDataLoading] = useState(true);
   const [showSignOutPrompt, setShowSignOutPrompt] = useState(false);
-  const [applications, setApplications] = useState([
-    { id:7, status:"In Progress", notes:"TAC Film & Media \u2014 draft 80% done" },
-    { id:28, status:"Submitted", notes:"MAC Matchmaker \u2014 submitted March 2026" },
-    { id:23, status:"Not Started", notes:"" }
-  ]);
+  const [applications, setApplications] = useState<UserApplication[]>([]);
   const [selectedGrant, setSelectedGrant] = useState<Grant | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([
     { role:"assistant" as const, content:`Welcome back, ${user.name}!\n\nI'm your CanGrants AI assistant. I can help you find the right grants, check your eligibility, and draft compelling proposals. What would you like to work on today?` }
@@ -582,6 +787,22 @@ function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; o
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setUserDataLoading(true);
+    Promise.all([
+      fetchSavedGrantIds(user.id),
+      fetchApplications(user.id),
+    ]).then(([savedIds, apps]) => {
+      if (!cancelled) {
+        setSaved(savedIds);
+        setApplications(apps);
+        setUserDataLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [user.id]);
 
   const filtered = grants.filter(g => {
     const q = search.toLowerCase();
@@ -598,9 +819,50 @@ function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; o
     return matchSearch&&matchDisc&&matchLoc&&matchTag&&matchDead;
   });
 
-  const toggleSave = (id: number) => setSaved(prev => { const n=new Set(prev); n.has(id)?n.delete(id):n.add(id); return n; });
-  const addApplication = (grant: Grant) => { if (!applications.find(a=>a.id===grant.id)) setApplications(p=>[...p,{id:grant.id,status:"Not Started",notes:""}]); };
-  const updateAppStatus = (id: number, status: string) => setApplications(p=>p.map(a=>a.id===id?{...a,status}:a));
+  const toggleSave = async (grantId: number) => {
+    const wasSaved = saved.has(grantId);
+    setSaved(prev => {
+      const next = new Set(prev);
+      if (wasSaved) next.delete(grantId);
+      else next.add(grantId);
+      return next;
+    });
+    try {
+      if (wasSaved) await unsaveGrant(user.id, grantId);
+      else await saveGrant(user.id, grantId);
+    } catch {
+      setSaved(prev => {
+        const next = new Set(prev);
+        if (wasSaved) next.add(grantId);
+        else next.delete(grantId);
+        return next;
+      });
+    }
+  };
+
+  const addApplication = async (grant: Grant) => {
+    if (applications.find(a => a.id === grant.id)) return;
+    const optimistic: UserApplication = { id: grant.id, dbId: -1, status: "Not Started", notes: "" };
+    setApplications(p => [...p, optimistic]);
+    try {
+      const created = await createApplication(user.id, grant.id);
+      setApplications(p => p.map(a => (a.id === grant.id && a.dbId === -1 ? created : a)));
+    } catch {
+      setApplications(p => p.filter(a => a.id !== grant.id || a.dbId !== -1));
+    }
+  };
+
+  const updateAppStatus = async (dbId: number, grantId: number, status: UserApplication["status"]) => {
+    const previous = applications.find(a => a.dbId === dbId);
+    setApplications(p => p.map(a => a.dbId === dbId ? { ...a, status } : a));
+    try {
+      await updateApplicationStatus(dbId, status);
+    } catch {
+      if (previous) {
+        setApplications(p => p.map(a => a.dbId === dbId ? previous : a));
+      }
+    }
+  };
 
   const sendMessage = async () => {
     if (!input.trim()||loading) return;
@@ -652,7 +914,9 @@ function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; o
       </header>
 
       <div style={{ maxWidth:1200, margin:"0 auto", padding:"28px 20px" }}>
-
+        {userDataLoading ? (
+          <div style={{ textAlign:"center", padding:"80px 0", color:"#5A6B5A" }}>Loading your saved grants and applications…</div>
+        ) : (<>
         {activeTab==="discover" && (
           <div>
             <div style={{ marginBottom:28, display:"flex", gap:16, flexWrap:"wrap", alignItems:"center", justifyContent:"space-between" }}>
@@ -768,7 +1032,7 @@ function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; o
                   </div>
                   {apps.length===0?(<div style={{ background:"#FAFAF7", borderRadius:10, padding:"20px", textAlign:"center", color:"#bbb", fontSize:13, border:"1px dashed #E0D5C5" }}>No grants here yet</div>):(
                     <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
-                      {apps.map(({grant,id,notes})=>{
+                      {apps.map(({grant,id,dbId,notes})=>{
                         const dl=getDeadlineStatus(grant.close);
                         return (
                           <div key={id} style={{ background:"#fff", borderRadius:12, border:"1px solid #E8E0D0", padding:"16px 20px", display:"flex", gap:16, alignItems:"center" }}>
@@ -779,7 +1043,7 @@ function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; o
                             </div>
                             <div style={{ display:"flex", flexDirection:"column", gap:8, alignItems:"flex-end", flexShrink:0 }}>
                               <span style={{ background:dl.color+"20", color:dl.color, fontSize:12, fontWeight:600, padding:"3px 10px", borderRadius:12 }}>{dl.label}</span>
-                              <select value={status} onChange={e=>updateAppStatus(id,e.target.value)} style={{ padding:"5px 10px", borderRadius:7, border:"1px solid #D5CBB8", fontSize:12, fontFamily:"'DM Sans',sans-serif", background:"#fff", cursor:"pointer" }}>
+                              <select value={status} onChange={e=>updateAppStatus(dbId, id, e.target.value as UserApplication["status"])} style={{ padding:"5px 10px", borderRadius:7, border:"1px solid #D5CBB8", fontSize:12, fontFamily:"'DM Sans',sans-serif", background:"#fff", cursor:"pointer" }}>
                                 {["Not Started","In Progress","Submitted"].map(s=><option key={s} value={s}>{s}</option>)}
                               </select>
                               <button onClick={()=>{setInput(`Help me write a grant proposal for ${grant.name} by ${grant.org}. Amount: ${grant.amount}. My project is...`);setActiveTab("assistant");}} style={{ padding:"5px 12px", borderRadius:7, border:"none", background:"#C8A84B", color:"#0B2215", fontSize:12, cursor:"pointer", fontWeight:600, fontFamily:"'DM Sans',sans-serif" }}>AI Draft {"\u2192"}</button>
@@ -829,6 +1093,7 @@ function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; o
             <p style={{ textAlign:"center", fontSize:12, color:"#aaa", marginTop:12 }}>Powered by Claude \u00b7 Tailored for BetterHalf Films slate</p>
           </div>
         )}
+        </>)}
       </div>
 
       <footer style={{ borderTop:"1px solid #E8E0D0", padding:"24px 40px", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:16, marginTop:40, background:"#fff" }}>
@@ -896,9 +1161,18 @@ function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; o
 
 function App() {
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [grants, setGrants] = useState<Grant[]>([]);
   const [grantsLoading, setGrantsLoading] = useState(false);
   const [grantsSource, setGrantsSource] = useState<GrantsSource>("fallback");
+
+  useEffect(() => {
+    const unsubscribe = initAuth((profile) => {
+      setUser(profile);
+      setAuthLoading(false);
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -914,6 +1188,19 @@ function App() {
     return () => { cancelled = true; };
   }, [user]);
 
+  const handleLogout = async () => {
+    await signOut();
+    setUser(null);
+  };
+
+  if (authLoading) {
+    return (
+      <div style={{ fontFamily:"'DM Sans',sans-serif", background:"#030E07", minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", color:"#F4EFE6" }}>
+        <p style={{ fontSize:16 }}>Loading…</p>
+      </div>
+    );
+  }
+
   if (!user) {
     return <LandingPage onAuth={setUser} />;
   }
@@ -926,7 +1213,7 @@ function App() {
     );
   }
 
-  return <Dashboard user={user} onLogout={() => setUser(null)} grants={grants} grantsSource={grantsSource} />;
+  return <Dashboard user={user} onLogout={handleLogout} grants={grants} grantsSource={grantsSource} />;
 }
 
 export default App;

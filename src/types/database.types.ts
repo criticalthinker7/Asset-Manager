@@ -1,135 +1,246 @@
 /**
  * Supabase database types for CanGrants.
- * Matches supabase/migrations/00000000000000_cangrants_schema.sql
  * Regenerate after schema changes via Supabase MCP `generate_typescript_types`.
  */
 
-export type ApplicationStatus = 'not_started' | 'in_progress' | 'submitted';
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[];
 
-export interface Database {
+export type Database = {
+  __InternalSupabase: {
+    PostgrestVersion: "14.5";
+  };
   public: {
     Tables: {
-      profiles: {
+      applications: {
         Row: {
-          id: string;
-          name: string;
-          email: string;
-          province: string | null;
-          discipline: string | null;
-          career: string | null;
           created_at: string;
+          grant_id: number;
+          id: number;
+          notes: string | null;
+          status: Database["public"]["Enums"]["application_status"];
           updated_at: string;
+          user_id: string;
         };
         Insert: {
-          id: string;
-          name: string;
-          email: string;
-          province?: string | null;
-          discipline?: string | null;
-          career?: string | null;
           created_at?: string;
+          grant_id: number;
+          id?: never;
+          notes?: string | null;
+          status?: Database["public"]["Enums"]["application_status"];
           updated_at?: string;
+          user_id: string;
         };
-        Update: Partial<Database['public']['Tables']['profiles']['Insert']>;
+        Update: {
+          created_at?: string;
+          grant_id?: number;
+          id?: never;
+          notes?: string | null;
+          status?: Database["public"]["Enums"]["application_status"];
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "applications_grant_id_fkey";
+            columns: ["grant_id"];
+            isOneToOne: false;
+            referencedRelation: "grants";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       grants: {
         Row: {
-          id: number;
-          name: string;
-          org: string;
-          open_date: string | null;
+          amount: string | null;
           close_date: string | null;
           close_label: string;
-          url: string;
-          discipline: string[];
-          location: string;
-          amount: string | null;
-          tags: string[];
-          eligibility: string | null;
-          description: string | null;
-          is_active: boolean;
           created_at: string;
+          description: string | null;
+          discipline: string[];
+          eligibility: string | null;
+          id: number;
+          is_active: boolean;
+          location: string;
+          name: string;
+          open_date: string | null;
+          org: string;
+          tags: string[];
+          updated_at: string;
+          url: string;
+        };
+        Insert: {
+          amount?: string | null;
+          close_date?: string | null;
+          close_label?: string;
+          created_at?: string;
+          description?: string | null;
+          discipline?: string[];
+          eligibility?: string | null;
+          id?: never;
+          is_active?: boolean;
+          location?: string;
+          name: string;
+          open_date?: string | null;
+          org: string;
+          tags?: string[];
+          updated_at?: string;
+          url: string;
+        };
+        Update: {
+          amount?: string | null;
+          close_date?: string | null;
+          close_label?: string;
+          created_at?: string;
+          description?: string | null;
+          discipline?: string[];
+          eligibility?: string | null;
+          id?: never;
+          is_active?: boolean;
+          location?: string;
+          name?: string;
+          open_date?: string | null;
+          org?: string;
+          tags?: string[];
+          updated_at?: string;
+          url?: string;
+        };
+        Relationships: [];
+      };
+      newsletter_signups: {
+        Row: {
+          created_at: string;
+          email: string;
+          id: number;
+          name: string | null;
+          source: string | null;
+        };
+        Insert: {
+          created_at?: string;
+          email: string;
+          id?: never;
+          name?: string | null;
+          source?: string | null;
+        };
+        Update: {
+          created_at?: string;
+          email?: string;
+          id?: never;
+          name?: string | null;
+          source?: string | null;
+        };
+        Relationships: [];
+      };
+      profiles: {
+        Row: {
+          career: string | null;
+          created_at: string;
+          discipline: string | null;
+          email: string;
+          id: string;
+          name: string;
+          province: string | null;
           updated_at: string;
         };
         Insert: {
-          id?: number;
-          name: string;
-          org: string;
-          open_date?: string | null;
-          close_date?: string | null;
-          close_label?: string;
-          url: string;
-          discipline?: string[];
-          location?: string;
-          amount?: string | null;
-          tags?: string[];
-          eligibility?: string | null;
-          description?: string | null;
-          is_active?: boolean;
+          career?: string | null;
           created_at?: string;
+          discipline?: string | null;
+          email: string;
+          id: string;
+          name: string;
+          province?: string | null;
           updated_at?: string;
         };
-        Update: Partial<Database['public']['Tables']['grants']['Insert']>;
+        Update: {
+          career?: string | null;
+          created_at?: string;
+          discipline?: string | null;
+          email?: string;
+          id?: string;
+          name?: string;
+          province?: string | null;
+          updated_at?: string;
+        };
+        Relationships: [];
       };
       saved_grants: {
         Row: {
-          user_id: string;
           grant_id: number;
           saved_at: string;
+          user_id: string;
         };
         Insert: {
-          user_id: string;
           grant_id: number;
           saved_at?: string;
-        };
-        Update: Partial<Database['public']['Tables']['saved_grants']['Insert']>;
-      };
-      applications: {
-        Row: {
-          id: number;
           user_id: string;
-          grant_id: number;
-          status: ApplicationStatus;
-          notes: string | null;
-          created_at: string;
-          updated_at: string;
         };
-        Insert: {
-          id?: number;
-          user_id: string;
-          grant_id: number;
-          status?: ApplicationStatus;
-          notes?: string | null;
-          created_at?: string;
-          updated_at?: string;
+        Update: {
+          grant_id?: number;
+          saved_at?: string;
+          user_id?: string;
         };
-        Update: Partial<Database['public']['Tables']['applications']['Insert']>;
+        Relationships: [
+          {
+            foreignKeyName: "saved_grants_grant_id_fkey";
+            columns: ["grant_id"];
+            isOneToOne: false;
+            referencedRelation: "grants";
+            referencedColumns: ["id"];
+          },
+        ];
       };
       wishlist_signups: {
         Row: {
-          id: number;
-          name: string;
-          email: string;
           city: string | null;
           country: string | null;
           created_at: string;
+          email: string;
+          id: number;
+          name: string;
+          source: string | null;
         };
         Insert: {
-          id?: number;
-          name: string;
-          email: string;
           city?: string | null;
           country?: string | null;
           created_at?: string;
+          email: string;
+          id?: never;
+          name: string;
+          source?: string | null;
         };
-        Update: Partial<Database['public']['Tables']['wishlist_signups']['Insert']>;
+        Update: {
+          city?: string | null;
+          country?: string | null;
+          created_at?: string;
+          email?: string;
+          id?: never;
+          name?: string;
+          source?: string | null;
+        };
+        Relationships: [];
       };
     };
+    Views: {
+      [_ in never]: never;
+    };
+    Functions: {
+      [_ in never]: never;
+    };
     Enums: {
-      application_status: ApplicationStatus;
+      application_status: "not_started" | "in_progress" | "submitted";
+    };
+    CompositeTypes: {
+      [_ in never]: never;
     };
   };
-}
+};
 
-export type GrantRow = Database['public']['Tables']['grants']['Row'];
-export type ProfileRow = Database['public']['Tables']['profiles']['Row'];
+export type ApplicationStatus = Database["public"]["Enums"]["application_status"];
+export type GrantRow = Database["public"]["Tables"]["grants"]["Row"];
+export type ProfileRow = Database["public"]["Tables"]["profiles"]["Row"];
