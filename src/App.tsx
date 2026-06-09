@@ -4,13 +4,11 @@ import { fetchGrants, type GrantsSource } from "@/lib/grants-api";
 import {
   authErrorMessage,
   initAuth,
-  sendEmailCode,
   sendMagicLink,
   signIn,
   signInWithGoogle,
   signOut,
   signUp,
-  verifyEmailCode,
   type UserInfo,
 } from "@/lib/auth";
 import { submitNewsletter, submitWishlist } from "@/lib/captures";
@@ -366,9 +364,7 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
   const [form, setForm] = useState({ name:"", email:"", password:"", address:"", city:"", province:"", postal:"", discipline:"", career:"" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loginForm, setLoginForm] = useState({ email:"", password:"" });
-  const [loginMethod, setLoginMethod] = useState<"password" | "magic_link" | "otp">("password");
-  const [otpCode, setOtpCode] = useState("");
-  const [otpSent, setOtpSent] = useState(false);
+  const [loginMethod, setLoginMethod] = useState<"password" | "magic_link">("password");
   const [loginErr, setLoginErr] = useState("");
   const [loginMsg, setLoginMsg] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
@@ -377,8 +373,6 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
 
   const resetLoginExtras = () => {
     setLoginMethod("password");
-    setOtpCode("");
-    setOtpSent(false);
     setLoginMsg("");
     setLoginErr("");
   };
@@ -466,49 +460,6 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
     try {
       await sendMagicLink(email);
       setLoginMsg("Sign-in link sent. Check your email and click the link to continue.");
-    } catch (err) {
-      setLoginErr(authErrorMessage(err));
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
-  const handleSendOtp = async () => {
-    const email = loginForm.email.trim();
-    if (!EMAIL_PATTERN.test(email)) {
-      setLoginErr("Enter a valid email address first.");
-      return;
-    }
-    setAuthBusy(true);
-    setLoginErr("");
-    setLoginMsg("");
-    try {
-      await sendEmailCode(email);
-      setOtpSent(true);
-      setLoginMsg("One-time code sent. Check your email and enter the 6-digit code below.");
-    } catch (err) {
-      setLoginErr(authErrorMessage(err));
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
-  const handleVerifyOtp = async () => {
-    const email = loginForm.email.trim();
-    if (!EMAIL_PATTERN.test(email)) {
-      setLoginErr("Enter a valid email address first.");
-      return;
-    }
-    if (otpCode.trim().length < 6) {
-      setLoginErr("Enter the 6-digit code from your email.");
-      return;
-    }
-    setAuthBusy(true);
-    setLoginErr("");
-    setLoginMsg("");
-    try {
-      const user = await verifyEmailCode(email, otpCode.trim());
-      onAuth(user);
     } catch (err) {
       setLoginErr(authErrorMessage(err));
     } finally {
@@ -635,12 +586,11 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
                 {([
                   ["password", "Password"],
                   ["magic_link", "Email link"],
-                  ["otp", "One-time code"],
                 ] as const).map(([id, label]) => (
                   <button
                     key={id}
                     type="button"
-                    onClick={() => { setLoginMethod(id); setLoginErr(""); setLoginMsg(""); setOtpSent(false); setOtpCode(""); }}
+                    onClick={() => { setLoginMethod(id); setLoginErr(""); setLoginMsg(""); }}
                     style={{ padding:"7px 12px", borderRadius:20, border:`1px solid ${loginMethod===id?"#C8A84B":"rgba(200,168,75,0.25)"}`, background:loginMethod===id?"rgba(200,168,75,0.15)":"transparent", color:loginMethod===id?"#C8A84B":"#8A9C8A", fontSize:12, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:500 }}
                   >
                     {label}
@@ -663,15 +613,6 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
                 </div>
               )}
 
-              {loginMethod === "otp" && otpSent && (
-                <div style={{ marginBottom:22 }}>
-                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#A8C5A0", letterSpacing:"1px", textTransform:"uppercase", marginBottom:5 }}>6-digit code</label>
-                  <input type="text" inputMode="numeric" maxLength={6} value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="123456"
-                    onKeyDown={e => e.key==="Enter" && handleVerifyOtp()}
-                    style={{ width:"100%", padding:"12px 14px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(200,168,75,0.3)", borderRadius:8, color:"#F4EFE6", fontSize:18, letterSpacing:"0.3em", fontFamily:"'DM Sans',sans-serif", outline:"none", boxSizing:"border-box" }}/>
-                </div>
-              )}
-
               {loginErr && <div style={{ background:"rgba(192,57,43,0.15)", border:"1px solid rgba(192,57,43,0.4)", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#E74C3C", marginBottom:16 }}>{loginErr}</div>}
               {loginMsg && <div style={{ background:"rgba(90,158,106,0.15)", border:"1px solid rgba(90,158,106,0.35)", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#A8C5A0", marginBottom:16, lineHeight:1.5 }}>{loginMsg}</div>}
 
@@ -681,19 +622,14 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
                 </button>
               )}
               {loginMethod === "magic_link" && (
-                <button onClick={handleSendMagicLink} disabled={authBusy} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
-                  {authBusy ? "Sending..." : "Email me a sign-in link"}
-                </button>
-              )}
-              {loginMethod === "otp" && !otpSent && (
-                <button onClick={handleSendOtp} disabled={authBusy} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
-                  {authBusy ? "Sending..." : "Send one-time code"}
-                </button>
-              )}
-              {loginMethod === "otp" && otpSent && (
-                <button onClick={handleVerifyOtp} disabled={authBusy} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
-                  {authBusy ? "Verifying..." : "Verify code & sign in"}
-                </button>
+                <>
+                  <p style={{ fontSize:12, color:"#6A8C6A", margin:"0 0 14px", lineHeight:1.5 }}>
+                    We'll email you a one-click sign-in link. Open it on this device to continue.
+                  </p>
+                  <button onClick={handleSendMagicLink} disabled={authBusy} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
+                    {authBusy ? "Sending..." : "Email me a sign-in link"}
+                  </button>
+                </>
               )}
 
               <p style={{ textAlign:"center", fontSize:13, color:"#666" }}>
@@ -712,7 +648,7 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
               <h2 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:36, fontWeight:700, margin:"0 0 6px" }}>Create Your Account</h2>
               <p style={{ fontSize:14, color:"#6A8C6A", marginBottom:8 }}>Join CanGrants — Canada's AI-powered grant platform for artists and producers.</p>
               <div style={{ background:"rgba(200,168,75,0.08)", border:"1px solid rgba(200,168,75,0.2)", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#B8A055", marginBottom:20 }}>
-                <strong>Canadian residents only.</strong> A valid Canadian postal code is required for the full registration form. You can also use Google or email link / code on the sign-in page.
+                <strong>Canadian residents only.</strong> A valid Canadian postal code is required for the full registration form. You can also use Google or an email sign-in link on the sign-in page.
               </div>
 
               <GoogleSignInButton disabled={authBusy} onClick={handleGoogleSignIn} />

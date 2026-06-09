@@ -57,8 +57,13 @@ export async function fetchProfile(userId: string): Promise<UserInfo> {
 
 export function getAuthRedirectUrl(): string {
   if (typeof window === "undefined") return "";
+
+  const configured = import.meta.env.VITE_SITE_URL?.replace(/\/$/, "");
+  if (configured) return configured;
+
   const base = import.meta.env.BASE_URL || "/";
-  return new URL(base, window.location.origin).href.replace(/\/$/, "") || window.location.origin;
+  const path = base === "/" ? "" : base.replace(/\/$/, "");
+  return `${window.location.origin}${path}`;
 }
 
 export async function signInWithGoogle(): Promise<void> {
@@ -84,6 +89,7 @@ export async function sendMagicLink(email: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Sends a 6-digit code only if the Supabase "Magic link or OTP" template includes `{{ .Token }}`. */
 export async function sendEmailCode(email: string): Promise<void> {
   if (!supabase) throw new Error("Supabase is not configured");
 
