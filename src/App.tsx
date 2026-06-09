@@ -478,7 +478,10 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
         "Sign-in link sent. Check your inbox, spam, and promotions folders. Delivery can take 1–2 minutes. Open the link on this device to continue."
       );
     } catch (err) {
-      setLoginErr(authErrorMessage(err));
+      const message = authErrorMessage(err);
+      setLoginErr(message);
+      const waitMatch = message.match(/(\d+)\s+seconds?/i);
+      if (waitMatch) setMagicLinkCooldown(Number(waitMatch[1]));
     } finally {
       setAuthBusy(false);
     }
