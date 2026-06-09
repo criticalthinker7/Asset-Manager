@@ -184,16 +184,33 @@ export function initAuth(onUser: (user: UserInfo | null) => void): () => void {
 
 export function authErrorMessage(error: unknown): string {
   if (error instanceof Error) {
-    if (/invalid login credentials/i.test(error.message)) {
+    const message = error.message;
+
+    if (/invalid login credentials/i.test(message)) {
       return "Invalid email or password.";
     }
-    if (/email not confirmed/i.test(error.message)) {
+    if (/email not confirmed/i.test(message)) {
       return "Please confirm your email before signing in.";
     }
-    if (/already registered|already been registered/i.test(error.message)) {
+    if (/already registered|already been registered/i.test(message)) {
       return "An account with this email already exists. Try signing in.";
     }
-    return error.message;
+    if (/otp_expired|expired/i.test(message)) {
+      return "That sign-in link or code has expired. Request a new one.";
+    }
+
+    const waitMatch = message.match(/(?:after|in|wait)\s+(\d+)\s+seconds?/i)
+      ?? message.match(/(\d+)\s+seconds?/i);
+    if (
+      /rate limit|too many requests|429|over_email_send_rate_limit|email.*limit/i.test(message)
+    ) {
+      if (waitMatch) {
+        return `Please wait ${waitMatch[1]} seconds before requesting another sign-in link. Check spam or promotions for your last email.`;
+      }
+      return "Please wait before requesting another sign-in link. Check spam or promotions for your last email.";
+    }
+
+    return message;
   }
   return "Something went wrong. Please try again.";
 }

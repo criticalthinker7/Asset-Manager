@@ -367,6 +367,7 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
   const [loginMethod, setLoginMethod] = useState<"password" | "magic_link">("password");
   const [loginErr, setLoginErr] = useState("");
   const [loginMsg, setLoginMsg] = useState("");
+  const [magicLinkCooldown, setMagicLinkCooldown] = useState(0);
   const [authBusy, setAuthBusy] = useState(false);
   const [registerMsg, setRegisterMsg] = useState("");
   const [particles] = useState(() => Array.from({length:22}, (_,i) => ({ id:i, x:Math.random()*100, y:Math.random()*100, size: 1+Math.random()*2.5, delay:Math.random()*4, dur:3+Math.random()*5 })));
@@ -375,7 +376,16 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
     setLoginMethod("password");
     setLoginMsg("");
     setLoginErr("");
+    setMagicLinkCooldown(0);
   };
+
+  useEffect(() => {
+    if (magicLinkCooldown <= 0) return;
+    const timer = window.setInterval(() => {
+      setMagicLinkCooldown((seconds) => (seconds <= 1 ? 0 : seconds - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [magicLinkCooldown]);
 
   const handleGoogleSignIn = async () => {
     setAuthBusy(true);
@@ -454,12 +464,19 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
       setLoginErr("Enter a valid email address first.");
       return;
     }
+    if (magicLinkCooldown > 0) {
+      setLoginErr(`Please wait ${magicLinkCooldown} seconds before requesting another sign-in link.`);
+      return;
+    }
     setAuthBusy(true);
     setLoginErr("");
     setLoginMsg("");
     try {
       await sendMagicLink(email);
-      setLoginMsg("Sign-in link sent. Check your email and click the link to continue.");
+      setMagicLinkCooldown(60);
+      setLoginMsg(
+        "Sign-in link sent. Check your inbox, spam, and promotions folders. Delivery can take 1–2 minutes. Open the link on this device to continue."
+      );
     } catch (err) {
       setLoginErr(authErrorMessage(err));
     } finally {
@@ -626,8 +643,16 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
                   <p style={{ fontSize:12, color:"#6A8C6A", margin:"0 0 14px", lineHeight:1.5 }}>
                     We'll email you a one-click sign-in link. Open it on this device to continue.
                   </p>
-                  <button onClick={handleSendMagicLink} disabled={authBusy} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
-                    {authBusy ? "Sending..." : "Email me a sign-in link"}
+                  <button
+                    onClick={handleSendMagicLink}
+                    disabled={authBusy || magicLinkCooldown > 0}
+                    style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:(authBusy || magicLinkCooldown > 0)?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:(authBusy || magicLinkCooldown > 0)?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}
+                  >
+                    {authBusy
+                      ? "Sending..."
+                      : magicLinkCooldown > 0
+                        ? `Resend in ${magicLinkCooldown}s`
+                        : "Email me a sign-in link"}
                   </button>
                 </>
               )}
