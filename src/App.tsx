@@ -4,7 +4,6 @@ import { fetchGrants, type GrantsSource } from "@/lib/grants-api";
 import {
   authErrorMessage,
   initAuth,
-  sendMagicLink,
   signIn,
   signInWithGoogle,
   signOut,
@@ -364,28 +363,14 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
   const [form, setForm] = useState({ name:"", email:"", password:"", address:"", city:"", province:"", postal:"", discipline:"", career:"" });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [loginForm, setLoginForm] = useState({ email:"", password:"" });
-  const [loginMethod, setLoginMethod] = useState<"password" | "magic_link">("password");
   const [loginErr, setLoginErr] = useState("");
-  const [loginMsg, setLoginMsg] = useState("");
-  const [magicLinkCooldown, setMagicLinkCooldown] = useState(0);
   const [authBusy, setAuthBusy] = useState(false);
   const [registerMsg, setRegisterMsg] = useState("");
   const [particles] = useState(() => Array.from({length:22}, (_,i) => ({ id:i, x:Math.random()*100, y:Math.random()*100, size: 1+Math.random()*2.5, delay:Math.random()*4, dur:3+Math.random()*5 })));
 
   const resetLoginExtras = () => {
-    setLoginMethod("password");
-    setLoginMsg("");
     setLoginErr("");
-    setMagicLinkCooldown(0);
   };
-
-  useEffect(() => {
-    if (magicLinkCooldown <= 0) return;
-    const timer = window.setInterval(() => {
-      setMagicLinkCooldown((seconds) => (seconds <= 1 ? 0 : seconds - 1));
-    }, 1000);
-    return () => window.clearInterval(timer);
-  }, [magicLinkCooldown]);
 
   const handleGoogleSignIn = async () => {
     setAuthBusy(true);
@@ -447,41 +432,11 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
   const handleLogin = async () => {
     setAuthBusy(true);
     setLoginErr("");
-    setLoginMsg("");
     try {
       const user = await signIn(loginForm.email.trim(), loginForm.password);
       onAuth(user);
     } catch (err) {
       setLoginErr(authErrorMessage(err));
-    } finally {
-      setAuthBusy(false);
-    }
-  };
-
-  const handleSendMagicLink = async () => {
-    const email = loginForm.email.trim();
-    if (!EMAIL_PATTERN.test(email)) {
-      setLoginErr("Enter a valid email address first.");
-      return;
-    }
-    if (magicLinkCooldown > 0) {
-      setLoginErr(`Please wait ${magicLinkCooldown} seconds before requesting another sign-in link.`);
-      return;
-    }
-    setAuthBusy(true);
-    setLoginErr("");
-    setLoginMsg("");
-    try {
-      await sendMagicLink(email);
-      setMagicLinkCooldown(60);
-      setLoginMsg(
-        "Sign-in link sent. Check your inbox, spam, and promotions folders. Delivery can take 1–2 minutes. Open the link on this device to continue."
-      );
-    } catch (err) {
-      const message = authErrorMessage(err);
-      setLoginErr(message);
-      const waitMatch = message.match(/(\d+)\s+seconds?/i);
-      if (waitMatch) setMagicLinkCooldown(Number(waitMatch[1]));
     } finally {
       setAuthBusy(false);
     }
@@ -600,23 +555,7 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
               <p style={{ fontSize:14, color:"#6A8C6A", marginBottom:24 }}>Welcome back. Access your CanGrants dashboard.</p>
 
               <GoogleSignInButton disabled={authBusy} onClick={handleGoogleSignIn} />
-              <AuthDivider label="or use email" />
-
-              <div style={{ display:"flex", gap:6, marginBottom:18, flexWrap:"wrap" }}>
-                {([
-                  ["password", "Password"],
-                  ["magic_link", "Email link"],
-                ] as const).map(([id, label]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => { setLoginMethod(id); setLoginErr(""); setLoginMsg(""); }}
-                    style={{ padding:"7px 12px", borderRadius:20, border:`1px solid ${loginMethod===id?"#C8A84B":"rgba(200,168,75,0.25)"}`, background:loginMethod===id?"rgba(200,168,75,0.15)":"transparent", color:loginMethod===id?"#C8A84B":"#8A9C8A", fontSize:12, cursor:"pointer", fontFamily:"'DM Sans',sans-serif", fontWeight:500 }}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
+              <AuthDivider label="or sign in with email" />
 
               <div style={{ marginBottom:14 }}>
                 <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#A8C5A0", letterSpacing:"1px", textTransform:"uppercase", marginBottom:5 }}>Email Address</label>
@@ -624,41 +563,18 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
                   style={{ width:"100%", padding:"12px 14px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(200,168,75,0.3)", borderRadius:8, color:"#F4EFE6", fontSize:14, fontFamily:"'DM Sans',sans-serif", outline:"none", boxSizing:"border-box" }}/>
               </div>
 
-              {loginMethod === "password" && (
-                <div style={{ marginBottom:22 }}>
-                  <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#A8C5A0", letterSpacing:"1px", textTransform:"uppercase", marginBottom:5 }}>Password</label>
-                  <input type="password" value={loginForm.password} onChange={e => setLoginForm(p=>({...p,password:e.target.value}))} placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
-                    onKeyDown={e => e.key==="Enter" && handleLogin()}
-                    style={{ width:"100%", padding:"12px 14px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(200,168,75,0.3)", borderRadius:8, color:"#F4EFE6", fontSize:14, fontFamily:"'DM Sans',sans-serif", outline:"none", boxSizing:"border-box" }}/>
-                </div>
-              )}
+              <div style={{ marginBottom:22 }}>
+                <label style={{ display:"block", fontSize:11, fontWeight:600, color:"#A8C5A0", letterSpacing:"1px", textTransform:"uppercase", marginBottom:5 }}>Password</label>
+                <input type="password" value={loginForm.password} onChange={e => setLoginForm(p=>({...p,password:e.target.value}))} placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+                  onKeyDown={e => e.key==="Enter" && handleLogin()}
+                  style={{ width:"100%", padding:"12px 14px", background:"rgba(255,255,255,0.06)", border:"1px solid rgba(200,168,75,0.3)", borderRadius:8, color:"#F4EFE6", fontSize:14, fontFamily:"'DM Sans',sans-serif", outline:"none", boxSizing:"border-box" }}/>
+              </div>
 
               {loginErr && <div style={{ background:"rgba(192,57,43,0.15)", border:"1px solid rgba(192,57,43,0.4)", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#E74C3C", marginBottom:16 }}>{loginErr}</div>}
-              {loginMsg && <div style={{ background:"rgba(90,158,106,0.15)", border:"1px solid rgba(90,158,106,0.35)", borderRadius:8, padding:"10px 14px", fontSize:13, color:"#A8C5A0", marginBottom:16, lineHeight:1.5 }}>{loginMsg}</div>}
 
-              {loginMethod === "password" && (
-                <button onClick={handleLogin} disabled={authBusy} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
-                  {authBusy ? "Signing in..." : <>Sign In {"\u2192"}</>}
-                </button>
-              )}
-              {loginMethod === "magic_link" && (
-                <>
-                  <p style={{ fontSize:12, color:"#6A8C6A", margin:"0 0 14px", lineHeight:1.5 }}>
-                    We'll email you a one-click sign-in link. Open it on this device to continue.
-                  </p>
-                  <button
-                    onClick={handleSendMagicLink}
-                    disabled={authBusy || magicLinkCooldown > 0}
-                    style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:(authBusy || magicLinkCooldown > 0)?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:(authBusy || magicLinkCooldown > 0)?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}
-                  >
-                    {authBusy
-                      ? "Sending..."
-                      : magicLinkCooldown > 0
-                        ? `Resend in ${magicLinkCooldown}s`
-                        : "Email me a sign-in link"}
-                  </button>
-                </>
-              )}
+              <button onClick={handleLogin} disabled={authBusy} style={{ width:"100%", padding:"14px", borderRadius:10, border:"none", background:authBusy?"#7A6933":"#C8A84B", color:"#0B2215", fontSize:15, fontWeight:700, cursor:authBusy?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", marginBottom:14 }}>
+                {authBusy ? "Signing in..." : <>Sign In {"\u2192"}</>}
+              </button>
 
               <p style={{ textAlign:"center", fontSize:13, color:"#666" }}>
                 Don't have an account?{" "}
@@ -676,7 +592,7 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
               <h2 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:36, fontWeight:700, margin:"0 0 6px" }}>Create Your Account</h2>
               <p style={{ fontSize:14, color:"#6A8C6A", marginBottom:8 }}>Join CanGrants — Canada's AI-powered grant platform for artists and producers.</p>
               <div style={{ background:"rgba(200,168,75,0.08)", border:"1px solid rgba(200,168,75,0.2)", borderRadius:8, padding:"10px 14px", fontSize:12, color:"#B8A055", marginBottom:20 }}>
-                <strong>Canadian residents only.</strong> A valid Canadian postal code is required for the full registration form. You can also use Google or an email sign-in link on the sign-in page.
+                <strong>Canadian residents only.</strong> A valid Canadian postal code is required for the full registration form. You can also sign in with Google or your email and password.
               </div>
 
               <GoogleSignInButton disabled={authBusy} onClick={handleGoogleSignIn} />

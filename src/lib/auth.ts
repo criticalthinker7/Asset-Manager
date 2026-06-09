@@ -76,44 +76,6 @@ export async function signInWithGoogle(): Promise<void> {
   if (error) throw error;
 }
 
-export async function sendMagicLink(email: string): Promise<void> {
-  if (!supabase) throw new Error("Supabase is not configured");
-
-  const { error } = await supabase.auth.signInWithOtp({
-    email: email.trim(),
-    options: {
-      emailRedirectTo: getAuthRedirectUrl(),
-      shouldCreateUser: true,
-    },
-  });
-  if (error) throw error;
-}
-
-/** Sends a 6-digit code only if the Supabase "Magic link or OTP" template includes `{{ .Token }}`. */
-export async function sendEmailCode(email: string): Promise<void> {
-  if (!supabase) throw new Error("Supabase is not configured");
-
-  const { error } = await supabase.auth.signInWithOtp({
-    email: email.trim(),
-    options: { shouldCreateUser: true },
-  });
-  if (error) throw error;
-}
-
-export async function verifyEmailCode(email: string, code: string): Promise<UserInfo> {
-  if (!supabase) throw new Error("Supabase is not configured");
-
-  const { data, error } = await supabase.auth.verifyOtp({
-    email: email.trim(),
-    token: code.trim(),
-    type: "email",
-  });
-  if (error) throw error;
-  if (!data.user) throw new Error("Verification failed");
-
-  return fetchProfile(data.user.id);
-}
-
 export async function signIn(email: string, password: string): Promise<UserInfo> {
   if (!supabase) throw new Error("Supabase is not configured");
 
@@ -195,19 +157,8 @@ export function authErrorMessage(error: unknown): string {
     if (/already registered|already been registered/i.test(message)) {
       return "An account with this email already exists. Try signing in.";
     }
-    if (/otp_expired|expired/i.test(message)) {
-      return "That sign-in link or code has expired. Request a new one.";
-    }
-
-    const waitMatch = message.match(/(?:after|in|wait)\s+(\d+)\s+seconds?/i)
-      ?? message.match(/(\d+)\s+seconds?/i);
-    if (
-      /rate limit|too many requests|429|over_email_send_rate_limit|email.*limit/i.test(message)
-    ) {
-      if (waitMatch) {
-        return `Please wait ${waitMatch[1]} seconds before requesting another sign-in link. Check spam or promotions for your last email.`;
-      }
-      return "Please wait before requesting another sign-in link. Check spam or promotions for your last email.";
+    if (/rate limit|too many requests|429/i.test(message)) {
+      return "Too many attempts. Please wait a moment and try again.";
     }
 
     return message;
