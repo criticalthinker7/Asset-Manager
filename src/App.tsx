@@ -1,96 +1,14 @@
-import { useState, useRef, useEffect, type FormEvent } from "react";
+import { useState, useRef, useEffect, useMemo, type FormEvent } from "react";
+import { CA_PROVINCES, getDeadlineStatus, validatePostal, type Grant } from "@/data/grants";
+import { fetchGrants, type GrantsSource } from "@/lib/grants-api";
+
 const canGrantsLogo = `${import.meta.env.BASE_URL}cangrants-logo.png`;
 
-const CA_PROVINCES = [
-  "Alberta","British Columbia","Manitoba","New Brunswick",
-  "Newfoundland and Labrador","Northwest Territories","Nova Scotia",
-  "Nunavut","Ontario","Prince Edward Island","Quebec",
-  "Saskatchewan","Yukon"
-];
-
-const GRANTS = [
-  { id:1, name:"Talent to Watch", org:"Telefilm Canada", open:"2026-01-15", close:"2026-04-30", url:"https://telefilm.ca/en/funding/talent-to-watch", discipline:["Film"], location:"Canada", amount:"Up to $125,000", tags:["Emerging","First Feature","Diverse Producers"], eligibility:"Canadian first- or second-time feature film producers. At least one key creative must be a first-timer. Strong preference for projects from underrepresented communities.", description:"Supports first and second feature film productions by emerging Canadian producers." },
-  { id:2, name:"Development Program", org:"Telefilm Canada", open:"2026-01-01", close:"Rolling", url:"https://telefilm.ca/en/funding/development", discipline:["Film"], location:"Canada", amount:"Up to $60,000", tags:["Development","Screenwriting","Producers"], eligibility:"Canadian production companies with a development track record. Project must be a feature film targeting theatrical release.", description:"Funds development of Canadian feature film projects including script development and packaging." },
-  { id:3, name:"Explore and Create", org:"Canada Council for the Arts", open:"2026-02-01", close:"2026-05-15", url:"https://canadacouncil.ca/funding/grants/explore-and-create", discipline:["Film","Visual Arts","Music","Writing","Interdisciplinary"], location:"Canada", amount:"Varies", tags:["Individual Artists","Groups","Emerging","Mid-Career","Diverse"], eligibility:"Canadian citizens or permanent residents who are professional artists, groups, or arts organizations. Supports research, development, creation, and production of artistic work.", description:"Supports the research, development, creation and production of artistic work across all disciplines." },
-  { id:4, name:"Engage and Sustain", org:"Canada Council for the Arts", open:"2026-03-01", close:"2026-06-01", url:"https://canadacouncil.ca/funding/grants/engage-and-sustain", discipline:["Film","Visual Arts","Music","Writing","Interdisciplinary"], location:"Canada", amount:"Varies", tags:["Organizations","Sustainability","Community"], eligibility:"Canadian arts organizations at the heart of creative communities. Supports ongoing operations and programming of established arts entities.", description:"Supports arts organizations at the heart of creative communities across Canada." },
-  { id:31, name:"Creating, Knowing and Sharing", org:"Canada Council for the Arts", open:"2026-02-15", close:"2026-06-15", url:"https://canadacouncil.ca/funding/grants/creating-knowing-sharing", discipline:["Film","Visual Arts","Music","Writing","Interdisciplinary"], location:"Canada", amount:"Varies", tags:["Indigenous","First Nations","Inuit","M\u00e9tis","Individual Artists","Organizations"], eligibility:"Individuals, groups, Indigenous-led arts organizations and arts and cultural sector development organizations. Supports a vital and resilient Indigenous arts ecosystem.", description:"Supports First Nations, Inuit and M\u00e9tis individuals, groups and organizations that foster a vital and resilient Indigenous arts ecosystem." },
-  { id:32, name:"Supporting Artistic Practice", org:"Canada Council for the Arts", open:"2026-03-01", close:"2026-07-01", url:"https://canadacouncil.ca/funding/grants/supporting-artistic-practice", discipline:["Film","Visual Arts","Music","Writing","Interdisciplinary"], location:"Canada", amount:"Varies", tags:["Organizations","Groups","Capacity Building","Sector Development"], eligibility:"Canadian arts professionals, groups and arts organizations who champion the Canadian arts sector. Supports boosting capacity for artists to realize work and advance conditions of creation.", description:"Supports Canadian arts professionals, groups and organizations who champion the arts sector and boost capacity for artists." },
-  { id:33, name:"Arts Across Canada and Abroad", org:"Canada Council for the Arts", open:"2026-04-01", close:"2026-08-01", url:"https://canadacouncil.ca/funding/grants/arts-across-canada-and-abroad", discipline:["Film","Visual Arts","Music","Writing","Interdisciplinary"], location:"Canada", amount:"Varies", tags:["Touring","International","Sharing","Distribution","Individual Artists","Organizations"], eligibility:"Canadian artists sharing their work nationally and internationally. Supports touring, distribution, dissemination and sharing of artistic work.", description:"Supports Canadian artists in sharing their work both nationally and internationally." },
-  { id:5, name:"Ontario Creates IP Fund", org:"Ontario Creates", open:"2026-01-10", close:"2026-05-31", url:"https://www.ontariocreates.ca/investment-programs/content-creation/intellectual-property-fund", discipline:["Film","Television"], location:"Canada", amount:"$50,000\u2013$1,000,000", tags:["Ontario","Feature Film","TV Series","Producers","IP"], eligibility:"Ontario-based production companies. Content must be produced substantially in Ontario with significant Ontario expenditure.", description:"Funds Ontario-based film and television productions with a focus on intellectual property development and market reach." },
-  { id:6, name:"IDM Fund", org:"Ontario Creates", open:"2026-02-15", close:"Rolling", url:"https://www.ontariocreates.ca/investment-programs/content-creation/idm-fund-2", discipline:["Digital Media","Interactive"], location:"Canada", amount:"Varies", tags:["Ontario","Digital","Interactive","Innovation"], eligibility:"Ontario-based companies creating interactive digital media content. Projects must demonstrate market potential and innovation.", description:"Supports Ontario interactive digital media projects with strong commercial and creative potential." },
-  { id:7, name:"Media Artists Program \u2013 Creation", org:"Toronto Arts Council", open:"2026-01-01", close:"2026-10-15", url:"https://torontoartscouncil.org/grants/media-artists-program-creation/", discipline:["Film","Digital Media"], location:"Canada", amount:"Up to $15,000", tags:["Toronto","Individual Artists","Media Arts","Emerging","Diverse"], eligibility:"Toronto-based media artists with a professional independent art practice. Includes independent film, video, audio, digital, VR/AR and new media artworks. TAC prioritizes equity-deserving groups.", description:"Supports Toronto media artists for creation/production of new work or completion of works in progress in film, video, digital and new media." },
-  { id:8, name:"Dance Projects", org:"Toronto Arts Council", open:"2026-01-01", close:"2026-03-16", url:"https://torontoartscouncil.org/grants/dance-projects/", discipline:["Dance"], location:"Canada", amount:"Varies", tags:["Toronto","Dance","Individual Artists","Organizations","Collectives"], eligibility:"Toronto-based dance artists, organizations and collectives. TAC prioritizes equity-deserving groups in all funding decisions.", description:"Supports professional development, creation, production and presentation of dance in Toronto." },
-  { id:36, name:"Theatre Projects", org:"Toronto Arts Council", open:"2026-01-01", close:"2026-03-02", url:"https://torontoartscouncil.org/grants/theatre-projects/", discipline:["Theatre"], location:"Canada", amount:"Varies", tags:["Toronto","Theatre","Organizations","Collectives"], eligibility:"Toronto-based theatre organizations and collectives. TAC prioritizes equity-deserving groups in all funding decisions.", description:"Supports the creation, production and presentation of theatre works in Toronto." },
-  { id:37, name:"Playwrights Program", org:"Toronto Arts Council", open:"2026-01-01", close:"2026-06-16", url:"https://torontoartscouncil.org/grants/playwrights-program/", discipline:["Theatre","Writing"], location:"Canada", amount:"Varies", tags:["Toronto","Theatre","Individual Artists","Playwrights","Writing"], eligibility:"Toronto-based individual playwrights. TAC prioritizes equity-deserving groups in all funding decisions.", description:"Supports the creation of theatrical plays by Toronto-based playwrights." },
-  { id:38, name:"Music Projects", org:"Toronto Arts Council", open:"2026-01-01", close:"2026-03-16", url:"https://torontoartscouncil.org/grants/music-projects/", discipline:["Music"], location:"Canada", amount:"Varies", tags:["Toronto","Music","Organizations","Collectives","Presentation"], eligibility:"Toronto-based music organizations and collectives. TAC prioritizes equity-deserving groups in all funding decisions.", description:"Supports music projects involving production, presentation, dissemination and other activities in Toronto." },
-  { id:39, name:"Music Creation & Recording", org:"Toronto Arts Council", open:"2026-01-01", close:"2026-09-03", url:"https://torontoartscouncil.org/grants/music-creation-and-recording/", discipline:["Music"], location:"Canada", amount:"Varies", tags:["Toronto","Music","Individual Artists","Creation","Recording"], eligibility:"Toronto-based artists working in any genre for the creation, writing and production of original music. TAC prioritizes equity-deserving groups.", description:"Supports Toronto artists in the creation, writing and production of their original music across all genres." },
-  { id:40, name:"Visual Artists Program \u2013 Creation", org:"Toronto Arts Council", open:"2026-01-01", close:"Rolling", url:"https://torontoartscouncil.org/grants/visual-artists-program-creation/", discipline:["Visual Arts"], location:"Canada", amount:"$10,000", tags:["Toronto","Visual Arts","Individual Artists","Creation"], eligibility:"Toronto-based visual artists with a professional independent art practice. Includes drawing, painting, sculpture, photography, mixed media, printmaking, performance art, installation and fine crafts.", description:"Supports Toronto visual artists for creation/production of new work or completion of works in progress." },
-  { id:41, name:"Writers Program", org:"Toronto Arts Council", open:"2026-01-01", close:"2026-06-15", url:"https://torontoartscouncil.org/grants/writers-program/", discipline:["Writing"], location:"Canada", amount:"Varies", tags:["Toronto","Writing","Individual Artists","Literary","Creation"], eligibility:"Toronto-based writers creating new literary works in written and oral forms across diverse genres. TAC prioritizes equity-deserving groups.", description:"Supports the creation of new literary works in written and oral forms across diverse genres by Toronto-based writers." },
-  { id:42, name:"Literary Projects", org:"Toronto Arts Council", open:"2026-01-01", close:"Rolling", url:"https://torontoartscouncil.org/grants/literary-projects/", discipline:["Writing"], location:"Canada", amount:"Varies", tags:["Toronto","Literary","Organizations","Collectives","Presentation"], eligibility:"Toronto-based literary organizations and collectives. Supports spoken word events, reading series, festivals, conferences and more.", description:"Supports literary projects including spoken word events, reading series, festivals, conferences and more in Toronto." },
-  { id:9, name:"Convergent Stream \u2013 Development", org:"Canada Media Fund (CMF)", open:"2026-01-06", close:"2026-04-08", url:"https://cmf-fmc.ca/our-programs/", discipline:["Television","Digital Media"], location:"Canada", amount:"Up to $350,000", tags:["Broadcasters","Producers","Television","Digital"], eligibility:"Canadian independent producers with a broadcaster license agreement. Projects must be linear television content with an interactive digital component.", description:"Funds development of Canadian television programs with convergent digital media components." },
-  { id:10, name:"Experimental Stream", org:"Canada Media Fund (CMF)", open:"2026-02-01", close:"2026-05-01", url:"https://cmf-fmc.ca/our-programs/", discipline:["Digital Media","Interactive"], location:"Canada", amount:"Up to $750,000", tags:["Innovation","Interactive","Digital","Diverse Producers"], eligibility:"Canadian companies creating innovative digital media content and applications. Projects must demonstrate market reach and commercial viability.", description:"Funds innovative Canadian digital media and interactive projects with strong market potential." },
-  { id:11, name:"Bell Fund \u2013 Digital Media", org:"Bell Fund", open:"2026-03-01", close:"2026-06-30", url:"https://bellfund.ca/deadlines/", discipline:["Digital Media","Television"], location:"Canada", amount:"Up to $300,000", tags:["Digital","Broadcasters","Producers","Interactive"], eligibility:"Canadian producers with a broadcast license. Projects must be convergent media tied to a Canadian television broadcast.", description:"Supports Canadian digital media projects that complement television content on Canadian broadcast platforms." },
-  { id:12, name:"Producers Program", org:"Independent Production Fund (IPF)", open:"2026-01-20", close:"2026-04-20", url:"https://www.ipf.ca/", discipline:["Television","Digital Media"], location:"Canada", amount:"Up to $150,000", tags:["Producers","Television","Independent","Diverse"], eligibility:"Canadian independent producers creating Canadian television content. Emerging producers and diverse voices given priority.", description:"Funds Canadian independent television and digital media production with focus on emerging and diverse producers." },
-  { id:13, name:"LIFT Production Grant", org:"Liaison of Independent Filmmakers of Toronto", open:"2026-02-01", close:"2026-05-01", url:"https://lift.ca/", discipline:["Film","Digital Media"], location:"Canada", amount:"$2,000\u2013$10,000", tags:["Toronto","Independent","Emerging","BIPOC","Experimental"], eligibility:"LIFT members based in Toronto. Priority for emerging and underrepresented filmmakers including BIPOC and LGBTQ+ artists.", description:"Supports Toronto independent filmmakers with production funding for short and feature-length projects." },
-  { id:14, name:"Alberta Made Production Grant", org:"Government of Alberta", open:"2026-01-01", close:"Rolling", url:"https://www.alberta.ca/alberta-made-production-grant", discipline:["Film","Television"], location:"Canada", amount:"Varies", tags:["Alberta","Film","Television","Production"], eligibility:"Alberta-based productions. Both Canadian and international productions eligible with significant Alberta expenditure.", description:"Supports film and television productions in Alberta with production-stage funding." },
-  { id:34, name:"Alberta Project Script Development Grant", org:"Government of Alberta", open:"2026-01-01", close:"Rolling", url:"https://www.alberta.ca/alberta-project-script-development-grant", discipline:["Film","Television"], location:"Canada", amount:"Varies", tags:["Alberta","Screenwriting","Development","Emerging"], eligibility:"Alberta-based screenwriters and producers developing scripts for film or television projects.", description:"Funds script development for Alberta-based film and television projects." },
-  { id:35, name:"AMF Post Production Grant", org:"Government of Alberta", open:"2026-01-01", close:"Rolling", url:"https://www.alberta.ca/alberta-project-script-development-grant", discipline:["Film","Television"], location:"Canada", amount:"Varies", tags:["Alberta","Post Production","Film","Television"], eligibility:"Productions completing post-production in Alberta. Must demonstrate significant Alberta post-production expenditure.", description:"Supports post-production work on film and television projects completed in Alberta." },
-  { id:15, name:"Film, Sound & Music Grant", org:"Creative BC", open:"2026-02-01", close:"2026-06-15", url:"https://www.creativebc.com/", discipline:["Film","Music"], location:"Canada", amount:"$5,000\u2013$150,000", tags:["BC","Film","Music","Emerging","Diverse"], eligibility:"BC-based artists and production companies. Priority for projects with strong BC cultural content and diverse creative teams.", description:"Supports BC-based film and music projects from development through distribution." },
-  { id:16, name:"Manitoba Film & TV Funding Programs", org:"Manitoba Film & Music", open:"2026-01-15", close:"Rolling", url:"https://www.mbfilmmusic.ca/film-tv/film-tv-funding-programs", discipline:["Film","Television","Music"], location:"Canada", amount:"Up to $200,000", tags:["Manitoba","Film","Television","Music","Independent"], eligibility:"Manitoba-based production companies with a minimum Manitoba spend. Projects must demonstrate strong market potential.", description:"Funds Manitoba film, television and music productions with market-driven content mandates." },
-  { id:17, name:"Filmmaker Assistance Program (FAP)", org:"National Film Board of Canada (NFB)", open:"2026-03-15", close:"2026-07-01", url:"https://production.nfbonf.ca/en/filmmaker-assistance-program-fap/", discipline:["Documentary","Film"], location:"Canada", amount:"Co-production funding", tags:["Documentary","Diverse","Indigenous","Social Issues","Environment"], eligibility:"Canadian filmmakers with compelling documentary or film projects. NFB prioritizes Indigenous creators, gender parity, and perspectives from underrepresented communities.", description:"NFB co-produces films with Canadian filmmakers exploring social, cultural, and environmental themes through the Filmmaker Assistance Program." },
-  { id:18, name:"Saskatchewan Arts Board Project Grant", org:"Saskatchewan Arts Board", open:"2026-02-15", close:"2026-05-15", url:"https://sk-arts.ca/", discipline:["Film","Visual Arts","Music","Writing","Interdisciplinary"], location:"Canada", amount:"$3,000\u2013$25,000", tags:["Saskatchewan","Individual Artists","Emerging","Diverse"], eligibility:"Saskatchewan residents who are professional artists. Funds projects at any stage of development or production.", description:"Supports Saskatchewan artists in creating and sharing their work across all disciplines." },
-  { id:19, name:"Project Involve Fellowship", org:"Film Independent", open:"2026-08-01", close:"2026-10-01", url:"https://www.filmindependent.org/programs/project-involve/", discipline:["Film"], location:"International", amount:"Fellowship + Mentorship", tags:["Emerging","BIPOC","Diaspora","Underrepresented","Hollywood"], eligibility:"Emerging filmmakers from underrepresented communities. Open to international applicants including Canadians. Strong preference for BIPOC, women, LGBTQ+, and disability communities.", description:"Year-long fellowship for emerging filmmakers from underrepresented communities, including mentorship and a short film production grant." },
-  { id:20, name:"Sundance Feature Film Program", org:"Sundance Institute", open:"2026-04-01", close:"2026-07-01", url:"https://collab.sundance.org/", discipline:["Film"], location:"International", amount:"Lab support + mentorship", tags:["Emerging","Independent","Feature Film","Diverse","Diaspora"], eligibility:"Independent filmmakers worldwide developing their first or second feature. Projects must demonstrate strong narrative ambition and originality.", description:"Intensive lab and mentorship program supporting emerging feature filmmakers globally, including Canadian and South Asian diaspora artists." },
-  { id:21, name:"Sundance Documentary Fund", org:"Sundance Institute", open:"2026-03-01", close:"2026-06-01", url:"https://www.sundance.org/apply", discipline:["Documentary"], location:"International", amount:"$10,000\u2013$50,000", tags:["Documentary","Emerging","Diverse","International","Social Issues"], eligibility:"Documentary filmmakers worldwide with projects in development or production. Priority for underrepresented voices and urgent social themes.", description:"Funds documentary films from global filmmakers exploring urgent human stories and social issues." },
-  { id:22, name:"Berlinale Talents", org:"Berlin International Film Festival", open:"2026-09-01", close:"2026-11-01", url:"https://www.berlinale-talents.de/", discipline:["Film"], location:"International", amount:"Residency + Networking", tags:["Emerging","International","Directors","Producers","Writers"], eligibility:"Film professionals within first 10 years of career. Open globally including Canada. All departments eligible: directors, producers, screenwriters, editors, composers.", description:"Annual talent development program bringing 200+ emerging film professionals to Berlin for mentorship, workshops, and networking." },
-  { id:23, name:"TIFF Talent Lab", org:"Toronto International Film Festival", open:"2026-03-01", close:"2026-05-31", url:"https://tiff.net/themarket/programming/labs-learning", discipline:["Film"], location:"International", amount:"Lab + mentorship", tags:["Emerging","Canadian Priority","Directors","Producers","Diaspora"], eligibility:"Emerging Canadian and international filmmakers with projects in development. Canadian applicants given priority. Strong preference for underrepresented voices.", description:"Intensive development lab at TIFF supporting emerging filmmakers with access to industry mentors and international co-production opportunities." },
-  { id:24, name:"Locarno Filmmakers Academy", org:"Locarno Film Festival", open:"2026-04-01", close:"2026-06-01", url:"https://www.locarnofestival.ch/about/factory.html", discipline:["Film"], location:"International", amount:"Residency + Networking", tags:["Emerging","Directors","International","Art Cinema"], eligibility:"Emerging directors with at least one feature film. International applications accepted. Strong preference for auteur-driven, art cinema projects.", description:"Residency program at Locarno Film Festival connecting emerging directors with leading industry figures and development support." },
-  { id:25, name:"IDFA Forum \u2013 DocLab", org:"International Documentary Film Festival Amsterdam", open:"2026-05-01", close:"2026-08-01", url:"https://festival.idfa.nl/en/new-media/", discipline:["Documentary","Digital Media","Interactive"], location:"International", amount:"Forum support + pitch platform", tags:["Documentary","Interactive","Innovation","International","Diverse"], eligibility:"Documentary and interactive media projects globally. Work must be in advanced development or post-production. Strong preference for innovative storytelling formats.", description:"International co-financing and co-production forum for documentary projects, including interactive and digital storytelling work." },
-  { id:26, name:"TorinoFilmLab \u2013 Script & Pitch", org:"Torino Film Lab", open:"2026-02-01", close:"2026-04-15", url:"https://www.torinofilmlab.it/labs", discipline:["Film"], location:"International", amount:"Development support + prize funding", tags:["Emerging","Writers","Directors","International","Diaspora"], eligibility:"International filmmakers working on first or second feature. Priority for projects from underrepresented territories and filmmakers with diaspora perspectives.", description:"Year-long script and pitch development lab supporting emerging international filmmakers with mentorship and industry access." },
-  { id:27, name:"IFFR Bright Future", org:"International Film Festival Rotterdam", open:"2026-06-01", close:"2026-09-01", url:"https://iffr.com/en/iffr-pro/talent-development", discipline:["Film"], location:"International", amount:"Residency + development support", tags:["Emerging","International","Experimental","Art Cinema","Diaspora"], eligibility:"Emerging filmmakers worldwide with bold, innovative projects. IFFR particularly welcomes filmmakers from the global south and diaspora communities.", description:"Talent development program at IFFR supporting emerging directors with innovative and experimental approaches to cinema." },
-  { id:28, name:"MAC Matchmaker MicroGrant", org:"Mississauga Arts Council", open:"2026-01-01", close:"Rolling", url:"https://www.mississaugaartscouncil.com/", discipline:["Film","Visual Arts","Music","Interdisciplinary"], location:"Canada", amount:"Up to $5,000 (matched)", tags:["Mississauga","Emerging","Individual Artists","BIPOC","Diverse"], eligibility:"Mississauga-based artists and arts organizations. Applicant must provide matching funds. Projects must demonstrate community impact.", description:"Matching grant for Mississauga artists supporting project development with a dollar-for-dollar match from the applicant." },
-  { id:29, name:"OAC \u2013 Dance", org:"Ontario Arts Council", open:"2026-02-01", close:"2026-05-01", url:"https://www.arts.on.ca/grants/discipline/dance", discipline:["Dance"], location:"Canada", amount:"Varies", tags:["Ontario","Dance","Emerging","BIPOC","Diaspora"], eligibility:"Ontario-based professional dance artists, organizations and collectives. Priority for underrepresented communities.", description:"Ontario Arts Council funding for dance artists and organizations supporting creation, production and presentation of dance." },
-  { id:43, name:"OAC \u2013 Literature", org:"Ontario Arts Council", open:"2026-02-01", close:"2026-05-01", url:"https://www.arts.on.ca/grants/discipline/literature", discipline:["Writing"], location:"Canada", amount:"Varies", tags:["Ontario","Literary","Writing","Emerging","BIPOC"], eligibility:"Ontario-based professional writers and literary organizations. Priority for underrepresented communities.", description:"Ontario Arts Council funding for literary artists and organizations supporting the creation and dissemination of literary works." },
-  { id:44, name:"OAC \u2013 Media Arts", org:"Ontario Arts Council", open:"2026-02-01", close:"2026-05-01", url:"https://www.arts.on.ca/grants/discipline/media-arts", discipline:["Film","Digital Media"], location:"Canada", amount:"Varies", tags:["Ontario","Media Arts","Film","Digital","Emerging","BIPOC"], eligibility:"Ontario-based professional media artists. Includes film, video, audio, digital media and new media. Priority for underrepresented communities.", description:"Ontario Arts Council funding for media artists working in film, video, audio, digital and new media art forms." },
-  { id:45, name:"OAC \u2013 Multi and Inter-Arts", org:"Ontario Arts Council", open:"2026-02-01", close:"2026-05-01", url:"https://www.arts.on.ca/grants/discipline/multi-and-inter-arts", discipline:["Interdisciplinary"], location:"Canada", amount:"Varies", tags:["Ontario","Interdisciplinary","Multi-Arts","Emerging","BIPOC"], eligibility:"Ontario-based professional artists working across multiple disciplines. Priority for underrepresented communities.", description:"Ontario Arts Council funding for artists and organizations working across multiple artistic disciplines." },
-  { id:46, name:"OAC \u2013 Music", org:"Ontario Arts Council", open:"2026-02-01", close:"2026-05-01", url:"https://www.arts.on.ca/grants/discipline/music", discipline:["Music"], location:"Canada", amount:"Varies", tags:["Ontario","Music","Emerging","BIPOC","Diaspora"], eligibility:"Ontario-based professional music artists and organizations. Priority for underrepresented communities.", description:"Ontario Arts Council funding for music artists and organizations supporting creation, recording and presentation of music." },
-  { id:47, name:"OAC \u2013 Theatre", org:"Ontario Arts Council", open:"2026-02-01", close:"2026-05-01", url:"https://www.arts.on.ca/grants/discipline/theatre", discipline:["Theatre"], location:"Canada", amount:"Varies", tags:["Ontario","Theatre","Emerging","BIPOC","Diaspora"], eligibility:"Ontario-based professional theatre artists and organizations. Priority for underrepresented communities.", description:"Ontario Arts Council funding for theatre artists and organizations supporting creation, production and presentation of theatre." },
-  { id:48, name:"OAC \u2013 Visual Arts", org:"Ontario Arts Council", open:"2026-02-01", close:"2026-05-01", url:"https://www.arts.on.ca/grants/discipline/visual-arts", discipline:["Visual Arts"], location:"Canada", amount:"Varies", tags:["Ontario","Visual Arts","Emerging","BIPOC","Diaspora"], eligibility:"Ontario-based professional visual artists and organizations. Priority for underrepresented communities.", description:"Ontario Arts Council funding for visual artists and organizations supporting creation, exhibition and presentation of visual art." },
-  { id:30, name:"NSI Features First", org:"National Screen Institute (NSI)", open:"2026-05-01", close:"2026-08-15", url:"https://nsi-canada.ca/programs/", discipline:["Film"], location:"Canada", amount:"Development + mentorship", tags:["Feature Film","Emerging","Diverse","First Feature","Writers","Directors"], eligibility:"Canadian filmmakers with a feature film script in development. Applications from Indigenous, BIPOC, women, and other underrepresented groups strongly encouraged.", description:"Intensive development program for Canadian first- and second-time feature filmmakers, pairing writers and directors with industry mentors." },
-];
-
-const today = new Date();
-const getDeadlineStatus = (close: string) => {
-  if (close === "Rolling") return { label: "Rolling", color: "#5A9E6A", days: Infinity };
-  const d = new Date(close), diff = Math.ceil((d.getTime() - today.getTime()) / 86400000);
-  if (diff < 0) return { label: "Closed", color: "#999", days: diff };
-  if (diff <= 14) return { label: `${diff}d left`, color: "#C0392B", days: diff };
-  if (diff <= 45) return { label: `${diff}d left`, color: "#E67E22", days: diff };
-  return { label: `${diff}d left`, color: "#27AE60", days: diff };
-};
-const ALL_DISCIPLINES = [...new Set(GRANTS.flatMap(g => g.discipline))].sort();
-const ALL_TAGS = [...new Set(GRANTS.flatMap(g => g.tags))].sort();
-const validatePostal = (v: string) => /^[A-Za-z]\d[A-Za-z][ -]?\d[A-Za-z]\d$/.test(v.trim());
 const formatGrantDate = (value: string) => (
   value === "Rolling"
     ? "Rolling"
     : new Date(value).toLocaleDateString("en-CA", { month:"long", day:"numeric", year:"numeric" })
 );
-
-interface Grant {
-  id: number;
-  name: string;
-  org: string;
-  open: string;
-  close: string;
-  url: string;
-  discipline: string[];
-  location: string;
-  amount: string;
-  tags: string[];
-  eligibility: string;
-  description: string;
-}
 
 interface UserInfo {
   name: string;
@@ -143,9 +61,9 @@ const postCapture = async (path: string, payload: Record<string, string>) => {
   }
 };
 
-const getLocalAssistantResponse = (prompt: string, user: UserInfo) => {
+const getLocalAssistantResponse = (prompt: string, user: UserInfo, grants: Grant[]) => {
   const q = prompt.toLowerCase();
-  const upcoming = GRANTS
+  const upcoming = grants
     .map(grant => ({ grant, status: getDeadlineStatus(grant.close) }))
     .filter(({ status }) => status.days >= 0 && status.days !== Infinity)
     .sort((a, b) => a.status.days - b.status.days);
@@ -158,7 +76,7 @@ const getLocalAssistantResponse = (prompt: string, user: UserInfo) => {
   }
 
   if (q.includes("eligible") || q.includes("eligibility")) {
-    const matches = GRANTS
+    const matches = grants
       .filter(grant =>
         (!user.discipline || grant.discipline.includes(user.discipline)) &&
         (!user.province || grant.location === "Canada" || grant.tags.includes(user.province))
@@ -642,7 +560,9 @@ function LandingPage({ onAuth }: { onAuth: (user: UserInfo) => void }) {
   );
 }
 
-function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void }) {
+function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; onLogout: () => void; grants: Grant[]; grantsSource: GrantsSource }) {
+  const allDisciplines = useMemo(() => [...new Set(grants.flatMap(g => g.discipline))].sort(), [grants]);
+  const allTags = useMemo(() => [...new Set(grants.flatMap(g => g.tags))].sort(), [grants]);
   const [activeTab, setActiveTab] = useState("discover");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState({ discipline:"", location:"", tag:"", deadline:"" });
@@ -663,7 +583,7 @@ function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void })
 
   useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior:"smooth" }); }, [messages]);
 
-  const filtered = GRANTS.filter(g => {
+  const filtered = grants.filter(g => {
     const q = search.toLowerCase();
     const matchSearch = !q || g.name.toLowerCase().includes(q) || g.org.toLowerCase().includes(q) || g.discipline.some(d=>d.toLowerCase().includes(q)) || g.tags.some(t=>t.toLowerCase().includes(q));
     const matchDisc = !filters.discipline || g.discipline.includes(filters.discipline);
@@ -699,13 +619,13 @@ function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void })
       });
       if (!res.ok) throw new Error("Chat API unavailable");
       const data = await res.json();
-      setMessages(p=>[...p,{role:"assistant" as const,content:data.content||getLocalAssistantResponse(userMsg.content, user)}]);
-    } catch { setMessages(p=>[...p,{role:"assistant" as const,content:getLocalAssistantResponse(userMsg.content, user)}]); }
+      setMessages(p=>[...p,{role:"assistant" as const,content:data.content||getLocalAssistantResponse(userMsg.content, user, grants)}]);
+    } catch { setMessages(p=>[...p,{role:"assistant" as const,content:getLocalAssistantResponse(userMsg.content, user, grants)}]); }
     setLoading(false);
   };
 
-  const savedGrants = GRANTS.filter(g=>saved.has(g.id));
-  const appGrants = applications.map(a=>({...a,grant:GRANTS.find(g=>g.id===a.id)!}));
+  const savedGrants = grants.filter(g=>saved.has(g.id));
+  const appGrants = applications.map(a=>({...a,grant:grants.find(g=>g.id===a.id)!}));
   const statusColors: Record<string,string> = {"Not Started":"#8B6914","In Progress":"#1A6BC4","Submitted":"#1E7A3E"};
   const statusBg: Record<string,string> = {"Not Started":"#FEF3C7","In Progress":"#DBEAFE","Submitted":"#D1FAE5"};
 
@@ -738,10 +658,10 @@ function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void })
             <div style={{ marginBottom:28, display:"flex", gap:16, flexWrap:"wrap", alignItems:"center", justifyContent:"space-between" }}>
               <div>
                 <h1 style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:32, fontWeight:700, margin:"0 0 4px", color:"#0B2215" }}>Grant Discovery</h1>
-                <p style={{ margin:0, color:"#5A6B5A", fontSize:14 }}>{GRANTS.length} opportunities \u00b7 Canadian &amp; International \u00b7 Updated 2026</p>
+                <p style={{ margin:0, color:"#5A6B5A", fontSize:14 }}>{grants.length} opportunities \u00b7 Canadian &amp; International \u00b7 Updated 2026{grantsSource === "fallback" ? " · offline catalog" : ""}</p>
               </div>
               <div style={{ display:"flex", gap:12 }}>
-                {[{label:"Total",value:GRANTS.length,color:"#C8A84B"},{label:"Canadian",value:GRANTS.filter(g=>g.location==="Canada").length,color:"#2D7D46"},{label:"International",value:GRANTS.filter(g=>g.location==="International").length,color:"#1A5FA8"}].map(s=>(
+                {[{label:"Total",value:grants.length,color:"#C8A84B"},{label:"Canadian",value:grants.filter(g=>g.location==="Canada").length,color:"#2D7D46"},{label:"International",value:grants.filter(g=>g.location==="International").length,color:"#1A5FA8"}].map(s=>(
                   <div key={s.label} style={{ background:"#fff", borderRadius:10, padding:"12px 20px", textAlign:"center", boxShadow:"0 1px 6px rgba(0,0,0,0.07)", minWidth:80 }}>
                     <div style={{ fontSize:22, fontWeight:700, fontFamily:"'Cormorant Garamond',serif", color:s.color }}>{s.value}</div>
                     <div style={{ fontSize:11, color:"#888" }}>{s.label}</div>
@@ -752,7 +672,7 @@ function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void })
             <div style={{ background:"#fff", borderRadius:14, padding:20, marginBottom:24, boxShadow:"0 2px 12px rgba(0,0,0,0.06)", border:"1px solid #E8E0D0" }}>
               <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search grants, organizations, disciplines, tags..." style={{ width:"100%", padding:"12px 16px", borderRadius:8, border:"1.5px solid #D5CBB8", fontSize:14, fontFamily:"'DM Sans',sans-serif", background:"#FAFAF7", outline:"none", boxSizing:"border-box", marginBottom:14, color:"#1A1208" }}/>
               <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
-                {[{key:"discipline",label:"Discipline",opts:ALL_DISCIPLINES},{key:"location",label:"Location",opts:["Canada","International"]},{key:"deadline",label:"Deadline",opts:[["urgent","Urgent (\u226414 days)"],["month","This Month"],["rolling","Rolling"]]},{key:"tag",label:"For\u2026",opts:ALL_TAGS}].map(({key,label,opts})=>(
+                {[{key:"discipline",label:"Discipline",opts:allDisciplines},{key:"location",label:"Location",opts:["Canada","International"]},{key:"deadline",label:"Deadline",opts:[["urgent","Urgent (\u226414 days)"],["month","This Month"],["rolling","Rolling"]]},{key:"tag",label:"For\u2026",opts:allTags}].map(({key,label,opts})=>(
                   <select key={key} value={filters[key as keyof typeof filters]} onChange={e=>setFilters(p=>({...p,[key]:e.target.value}))} style={{ padding:"8px 12px", borderRadius:8, border:"1.5px solid #D5CBB8", fontSize:13, background:"#fff", fontFamily:"'DM Sans',sans-serif", color:"#1A1208", cursor:"pointer" }}>
                     <option value="">{label}: All</option>
                     {opts.map(o=>Array.isArray(o)?<option key={o[0]} value={o[0]}>{o[1]}</option>:<option key={o} value={o}>{o}</option>)}
@@ -761,7 +681,7 @@ function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void })
                 {(search||Object.values(filters).some(Boolean))&&<button onClick={()=>{setSearch("");setFilters({discipline:"",location:"",tag:"",deadline:""}); }} style={{ padding:"8px 14px", borderRadius:8, border:"1px solid #E0D5C5", background:"transparent", fontSize:13, cursor:"pointer", color:"#888", fontFamily:"'DM Sans',sans-serif" }}>Clear all</button>}
               </div>
             </div>
-            <p style={{ fontSize:13, color:"#888", marginBottom:16 }}>Showing {filtered.length} of {GRANTS.length} grants</p>
+            <p style={{ fontSize:13, color:"#888", marginBottom:16 }}>Showing {filtered.length} of {grants.length} grants</p>
             <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(340px,1fr))", gap:18 }}>
               {filtered.map(g=>{
                 const dl=getDeadlineStatus(g.close), isSaved=saved.has(g.id), hasApp=applications.find(a=>a.id===g.id);
@@ -976,12 +896,37 @@ function Dashboard({ user, onLogout }: { user: UserInfo; onLogout: () => void })
 
 function App() {
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [grants, setGrants] = useState<Grant[]>([]);
+  const [grantsLoading, setGrantsLoading] = useState(false);
+  const [grantsSource, setGrantsSource] = useState<GrantsSource>("fallback");
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    setGrantsLoading(true);
+    fetchGrants().then(({ grants: loaded, source }) => {
+      if (!cancelled) {
+        setGrants(loaded);
+        setGrantsSource(source);
+        setGrantsLoading(false);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [user]);
 
   if (!user) {
     return <LandingPage onAuth={setUser} />;
   }
 
-  return <Dashboard user={user} onLogout={() => setUser(null)} />;
+  if (grantsLoading) {
+    return (
+      <div style={{ fontFamily:"'DM Sans',sans-serif", background:"#F4EFE6", minHeight:"100vh", display:"flex", alignItems:"center", justifyContent:"center", color:"#0B2215" }}>
+        <p style={{ fontSize:16 }}>Loading grants…</p>
+      </div>
+    );
+  }
+
+  return <Dashboard user={user} onLogout={() => setUser(null)} grants={grants} grantsSource={grantsSource} />;
 }
 
 export default App;
