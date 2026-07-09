@@ -1034,39 +1034,39 @@ function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; o
       </footer>
 
       {selectedGrant&&(
-        <div onClick={()=>setSelectedGrant(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-          <div onClick={e=>e.stopPropagation()} style={{ background:"#fff", borderRadius:18, maxWidth:600, width:"100%", maxHeight:"85vh", overflowY:"auto", boxShadow:"0 20px 60px rgba(0,0,0,0.3)" }}>
-            <div style={{ background:selectedGrant.location==="Canada"?"#0B2215":"#1A2F5A", padding:"22px 26px", borderRadius:"18px 18px 0 0" }}>
-              <div style={{ fontSize:11, letterSpacing:"1.5px", color:selectedGrant.location==="Canada"?"#6A9C6A":"#6A8CC8", textTransform:"uppercase", marginBottom:6 }}>{selectedGrant.location} \u00b7 {selectedGrant.discipline.join(", ")}</div>
-              <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:24, fontWeight:700, color:"#F4EFE6" }}>{selectedGrant.name}</div>
-              <div style={{ fontSize:14, color:"#A8C5A0", marginTop:4 }}>{selectedGrant.org}</div>
+        <div onClick={()=>setSelectedGrant(null)} style={{ position:"fixed", inset:0, background:"rgba(0,0,0,0.5)", zIndex:200, display:"flex", alignItems:"center", justifyContent:"center", padding:32 }}>
+          <div onClick={e=>e.stopPropagation()} style={{ background:"#fff", borderRadius:20, maxWidth:1040, width:"100%", maxHeight:"88vh", overflowY:"auto", boxShadow:"0 24px 70px rgba(0,0,0,0.34)" }}>
+            <div style={{ background:selectedGrant.location==="Canada"?"#0B2215":"#1A2F5A", padding:"34px 42px", borderRadius:"20px 20px 0 0" }}>
+              <div style={{ fontSize:22, letterSpacing:"1px", color:selectedGrant.location==="Canada"?"#6A9C6A":"#6A8CC8", textTransform:"uppercase", marginBottom:10, lineHeight:1.35, fontWeight:800 }}>{selectedGrant.location} \u00b7 {selectedGrant.discipline.join(", ")}</div>
+              <div style={{ fontFamily:"'Cormorant Garamond',serif", fontSize:42, fontWeight:700, color:"#F4EFE6", lineHeight:1.08 }}>{selectedGrant.name}</div>
+              <div style={{ fontSize:24, color:"#A8C5A0", marginTop:10, fontWeight:700 }}>{selectedGrant.org}</div>
             </div>
-            <div style={{ padding:"24px 26px" }}>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:16, marginBottom:20 }}>
+            <div style={{ padding:"36px 42px" }}>
+              <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fit, minmax(260px, 1fr))", gap:18, marginBottom:28 }}>
                 {[{label:"Amount",value:selectedGrant.amount},{label:"Deadline",value:selectedGrant.close==="Rolling"?"Rolling":new Date(selectedGrant.close).toLocaleDateString("en-CA",{month:"long",day:"numeric",year:"numeric"})},{label:"Opens",value:new Date(selectedGrant.open).toLocaleDateString("en-CA",{month:"long",day:"numeric",year:"numeric"})},{label:"Location",value:selectedGrant.location}].map(({label,value})=>(
-                  <div key={label} style={{ background:"#F7F2E8", borderRadius:10, padding:"12px 16px" }}>
-                    <div style={{ fontSize:11, color:"#888", marginBottom:2 }}>{label}</div>
-                    <div style={{ fontSize:15, fontWeight:600, color:"#0B2215" }}>{value}</div>
+                  <div key={label} style={{ background:"#F7F2E8", borderRadius:12, padding:"18px 22px" }}>
+                    <div style={{ fontSize:22, color:"#777", marginBottom:8, fontWeight:800 }}>{label}</div>
+                    <div style={{ fontSize:22, fontWeight:800, color:"#0B2215", lineHeight:1.35 }}>{value}</div>
                   </div>
                 ))}
               </div>
-              <div style={{ marginBottom:18 }}>
-                <div style={{ fontSize:12, fontWeight:600, color:"#C8A84B", letterSpacing:"1px", textTransform:"uppercase", marginBottom:8 }}>Description</div>
-                <p style={{ margin:0, fontSize:14, color:"#3A3A2A", lineHeight:1.7 }}>{selectedGrant.description}</p>
+              <div style={{ marginBottom:28 }}>
+                <div style={{ fontSize:22, fontWeight:800, color:"#C8A84B", letterSpacing:"1px", textTransform:"uppercase", marginBottom:12 }}>Description</div>
+                <p style={{ margin:0, fontSize:22, color:"#3A3A2A", lineHeight:1.65 }}>{selectedGrant.description}</p>
               </div>
-              <div style={{ marginBottom:18 }}>
-                <div style={{ fontSize:12, fontWeight:600, color:"#C8A84B", letterSpacing:"1px", textTransform:"uppercase", marginBottom:8 }}>Eligibility</div>
-                <p style={{ margin:0, fontSize:14, color:"#3A3A2A", lineHeight:1.7 }}>{selectedGrant.eligibility}</p>
+              <div style={{ marginBottom:28 }}>
+                <div style={{ fontSize:22, fontWeight:800, color:"#C8A84B", letterSpacing:"1px", textTransform:"uppercase", marginBottom:12 }}>Eligibility</div>
+                <p style={{ margin:0, fontSize:22, color:"#3A3A2A", lineHeight:1.65 }}>{selectedGrant.eligibility}</p>
               </div>
-              <div style={{ marginBottom:20 }}>
-                <div style={{ fontSize:12, fontWeight:600, color:"#C8A84B", letterSpacing:"1px", textTransform:"uppercase", marginBottom:8 }}>Tags</div>
-                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  {selectedGrant.tags.map(t=><span key={t} style={{ background:"#EEF5EE", color:"#2A5C2A", fontSize:12, padding:"4px 10px", borderRadius:20, fontWeight:500 }}>{t}</span>)}
+              <div style={{ marginBottom:28 }}>
+                <div style={{ fontSize:22, fontWeight:800, color:"#C8A84B", letterSpacing:"1px", textTransform:"uppercase", marginBottom:12 }}>Tags</div>
+                <div style={{ display:"flex", gap:10, flexWrap:"wrap" }}>
+                  {selectedGrant.tags.map(t=><span key={t} style={{ background:"#EEF5EE", color:"#2A5C2A", fontSize:22, padding:"8px 14px", borderRadius:22, fontWeight:700, lineHeight:1.25 }}>{t}</span>)}
                 </div>
               </div>
-              <div style={{ display:"flex", gap:10, marginTop:20 }}>
-                <a href={selectedGrant.url} target="_blank" rel="noopener noreferrer" style={{ flex:1, padding:"12px 0", borderRadius:10, border:"none", background:"#C8A84B", color:"#0B2215", fontSize:14, fontWeight:700, textDecoration:"none", textAlign:"center", cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>Apply Now {"\u2197"}</a>
-                <button onClick={()=>setSelectedGrant(null)} style={{ flex:1, padding:"12px 0", borderRadius:10, border:"1.5px solid #D5CBB8", background:"transparent", fontSize:14, cursor:"pointer", color:"#5A4A2A", fontFamily:"'DM Sans',sans-serif", fontWeight:500 }}>Close</button>
+              <div style={{ display:"flex", gap:12, marginTop:28, flexWrap:"wrap" }}>
+                <a href={selectedGrant.url} target="_blank" rel="noopener noreferrer" style={{ flex:1, minWidth:220, padding:"16px 0", borderRadius:12, border:"none", background:"#C8A84B", color:"#0B2215", fontSize:22, fontWeight:800, textDecoration:"none", textAlign:"center", cursor:"pointer", fontFamily:"'DM Sans',sans-serif" }}>Apply Now {"\u2197"}</a>
+                <button onClick={()=>setSelectedGrant(null)} style={{ flex:1, minWidth:220, padding:"16px 0", borderRadius:12, border:"1.5px solid #D5CBB8", background:"transparent", fontSize:22, cursor:"pointer", color:"#5A4A2A", fontFamily:"'DM Sans',sans-serif", fontWeight:800 }}>Close</button>
               </div>
             </div>
           </div>
