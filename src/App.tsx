@@ -29,6 +29,55 @@ const formatGrantDate = (value: string) => (
     : new Date(value).toLocaleDateString("en-CA", { month:"long", day:"numeric", year:"numeric" })
 );
 
+const normalizeGrantSearchText = (value: string) =>
+  value
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/&/g, " and ")
+    .replace(/['\u2018\u2019`]/g, "")
+    .replace(/[-\u2013\u2014_/]+/g, " ")
+    .replace(/[^a-zA-Z0-9]+/g, " ")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ");
+
+const grantSearchCorpus = (grant: Grant) =>
+  normalizeGrantSearchText([
+    grant.name,
+    grant.org,
+    grant.discipline.join(" "),
+    grant.tags.join(" "),
+    grant.eligibility,
+    grant.description,
+    grant.amount,
+    grant.url,
+  ].join(" "));
+
+const matchesGrantSearch = (grant: Grant, query: string) => {
+  const normalizedQuery = normalizeGrantSearchText(query);
+  if (!normalizedQuery) return true;
+
+  const corpus = grantSearchCorpus(grant);
+  if (corpus.includes(normalizedQuery)) return true;
+
+  const queryTokens = normalizedQuery.split(" ").filter(Boolean);
+  const corpusTokens = corpus.split(" ");
+  return queryTokens.every(token =>
+    corpusTokens.includes(token)
+    || (token.length >= 4 && corpusTokens.some(value => value.startsWith(token)))
+  );
+};
+
+const matchesNormalizedListValue = (selected: string, values: string[]) => {
+  const normalizedSelected = normalizeGrantSearchText(selected);
+  if (!normalizedSelected) return true;
+
+  return values.some(value => {
+    const normalizedValue = normalizeGrantSearchText(value);
+    return normalizedValue === normalizedSelected || normalizedValue.includes(normalizedSelected);
+  });
+};
+
 interface UserInfoForAssistant {
   name: string;
   province?: string;
@@ -685,11 +734,10 @@ function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; o
   }, [user.id]);
 
   const filtered = grants.filter(g => {
-    const q = search.toLowerCase();
-    const matchSearch = !q || g.name.toLowerCase().includes(q) || g.org.toLowerCase().includes(q) || g.discipline.some(d=>d.toLowerCase().includes(q)) || g.tags.some(t=>t.toLowerCase().includes(q));
-    const matchDisc = !filters.discipline || g.discipline.includes(filters.discipline);
+    const matchSearch = matchesGrantSearch(g, search);
+    const matchDisc = !filters.discipline || matchesNormalizedListValue(filters.discipline, g.discipline);
     const matchLoc = !filters.location || g.location === filters.location;
-    const matchTag = !filters.tag || g.tags.includes(filters.tag);
+    const matchTag = !filters.tag || matchesNormalizedListValue(filters.tag, g.tags);
     const matchDead = !filters.deadline || (() => {
       if (filters.deadline==="rolling") return g.close==="Rolling";
       if (filters.deadline==="urgent") { const d=getDeadlineStatus(g.close); return d.days>=0&&d.days<=14; }

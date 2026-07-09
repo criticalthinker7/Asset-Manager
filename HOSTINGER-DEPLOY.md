@@ -29,7 +29,7 @@ Do **not** upload the `dist` folder itself — upload its **contents**.
 
 Open https://betterhalffilms.com/cangrants/
 
-Demo login: `demo@betterhalffilms.com` / `demo123`
+QA credentials are managed in Supabase and should be shared out-of-band. Do not store live passwords in this repo.
 
 ## WordPress note
 

@@ -2,7 +2,7 @@
 
 AI-powered grant discovery and management for Canadian artists and producers. Built by BetterHalf Films.
 
-**Demo login:** `demo@betterhalffilms.com` / `demo123`
+Demo and QA credentials are managed in Supabase and shared out-of-band. Do not commit live passwords to this repository.
 
 ## Stack
 
