@@ -1066,7 +1066,7 @@ function App() {
       }
     });
     return () => { cancelled = true; };
-  }, [user]);
+  }, [user?.id]);
 
   const handleLogout = async () => {
     await signOut();
