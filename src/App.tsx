@@ -1472,7 +1472,7 @@ function Dashboard({ user, onLogout, grants, grantsSource }: { user: UserInfo; o
                 <button onClick={sendMessage} disabled={loading||!input.trim()} style={{ padding:"10px 20px", borderRadius:10, border:"none", background:loading||!input.trim()?"#D5CBB8":"#0B2215", color:loading||!input.trim()?"#888":"#C8A84B", fontWeight:600, fontSize:14, cursor:loading||!input.trim()?"not-allowed":"pointer", fontFamily:"'DM Sans',sans-serif", alignSelf:"flex-end" }}>Send</button>
               </div>
             </div>
-            <p style={{ textAlign:"center", fontSize:12, color:"#aaa", marginTop:12 }}>Powered by Claude {"\u00b7"} Tailored for {COMPANY_NAME}</p>
+            <p style={{ textAlign:"center", fontSize:12, color:"#aaa", marginTop:12 }}>Powered by ChatGPT {"\u00b7"} Tailored for {COMPANY_NAME}</p>
           </div>
         )}
         </>)}
