@@ -5,6 +5,9 @@ export interface UserInfo {
   id: string;
   name: string;
   email: string;
+  address?: string;
+  city?: string;
+  postal?: string;
   province?: string;
   discipline?: string;
   career?: string;
@@ -14,6 +17,9 @@ export interface RegisterParams {
   name: string;
   email: string;
   password: string;
+  address: string;
+  city: string;
+  postal: string;
   province: string;
   discipline: string;
   career: string;
@@ -24,6 +30,9 @@ function profileToUser(profile: ProfileRow): UserInfo {
     id: profile.id,
     name: profile.name,
     email: profile.email,
+    address: profile.address ?? undefined,
+    city: profile.city ?? undefined,
+    postal: profile.postal ?? undefined,
     province: profile.province ?? undefined,
     discipline: profile.discipline ?? undefined,
     career: profile.career ?? undefined,
@@ -49,6 +58,9 @@ export async function fetchProfile(userId: string): Promise<UserInfo> {
     id: userId,
     name: (authUser.user_metadata?.name as string) || authUser.email?.split("@")[0] || "Artist",
     email: authUser.email ?? "",
+    address: (authUser.user_metadata?.address as string) || undefined,
+    city: (authUser.user_metadata?.city as string) || undefined,
+    postal: (authUser.user_metadata?.postal as string) || undefined,
     province: (authUser.user_metadata?.province as string) || undefined,
     discipline: (authUser.user_metadata?.discipline as string) || undefined,
     career: (authUser.user_metadata?.career as string) || undefined,
@@ -58,11 +70,18 @@ export async function fetchProfile(userId: string): Promise<UserInfo> {
 export function getAuthRedirectUrl(): string {
   if (typeof window === "undefined") return "";
 
+  const base = import.meta.env.BASE_URL || "/";
+  const path = base === "/" ? "" : base.replace(/\/$/, "");
+  const currentUrl = `${window.location.origin}${path}`;
+  const host = window.location.hostname;
+
+  if (host === "localhost" || host === "127.0.0.1" || host.endsWith(".vercel.app")) {
+    return currentUrl;
+  }
+
   const configured = import.meta.env.VITE_SITE_URL?.replace(/\/$/, "");
   if (configured) return configured;
 
-  const base = import.meta.env.BASE_URL || "/";
-  const path = base === "/" ? "" : base.replace(/\/$/, "");
   return `${window.location.origin}${path}`;
 }
 
@@ -99,6 +118,9 @@ export async function signUp(params: RegisterParams): Promise<SignUpResult> {
     options: {
       data: {
         name: params.name,
+        address: params.address,
+        city: params.city,
+        postal: params.postal,
         province: params.province,
         discipline: params.discipline,
         career: params.career,
