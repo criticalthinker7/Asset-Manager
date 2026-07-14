@@ -77,11 +77,68 @@ export async function generateAssistantReply(
   messages: ChatMessage[],
   user: ChatUserContext,
 ): Promise<string> {
-  const apiKey = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY is not configured");
+  const openAiKey = process.env.OPENAI_API_KEY?.trim();
+  if (openAiKey) {
+    return generateOpenAiReply(messages, user, openAiKey);
   }
 
+  const anthropicKey = process.env.ANTHROPIC_API_KEY?.trim();
+  if (anthropicKey) {
+    return generateAnthropicReply(messages, user, anthropicKey);
+  }
+
+  throw new Error("OPENAI_API_KEY or ANTHROPIC_API_KEY must be configured");
+}
+
+async function generateOpenAiReply(
+  messages: ChatMessage[],
+  user: ChatUserContext,
+  apiKey: string,
+): Promise<string> {
+  const model = process.env.OPENAI_MODEL?.trim() || "gpt-4o-mini";
+  const system = buildSystemPrompt(user);
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 1200,
+      messages: [
+        { role: "system", content: system },
+        ...messages.map((message) => ({
+          role: message.role,
+          content: message.content,
+        })),
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    throw new Error(`OpenAI API error (${response.status}): ${errorBody.slice(0, 300)}`);
+  }
+
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+
+  const text = data.choices?.[0]?.message?.content?.trim();
+  if (!text) {
+    throw new Error("OpenAI API returned an empty response");
+  }
+
+  return text;
+}
+
+async function generateAnthropicReply(
+  messages: ChatMessage[],
+  user: ChatUserContext,
+  apiKey: string,
+): Promise<string> {
   const model = process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-20250514";
   const system = buildSystemPrompt(user);
 

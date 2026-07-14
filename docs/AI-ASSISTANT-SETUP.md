@@ -1,31 +1,26 @@
 # Activate the AI Grant Assistant
 
-The **AI Assistant** tab is already built in the dashboard. Today it falls back to a local keyword matcher when the chat API is unavailable. To enable real Claude responses, add one server-side API key and redeploy.
+The **AI Assistant** tab is already built in the dashboard. Today it falls back to a local keyword matcher when the chat API is unavailable. To enable real AI responses, add one server-side API key and redeploy.
 
 ## What is already wired up
 
 - UI: dashboard tab at `/assistant` in `src/App.tsx`
 - Client: `POST /api/chat` with conversation history + applicant profile
-- Server: `api/chat.ts` calls Claude with your grant catalog as context (`server/chat.ts`)
+- Server: `api/chat.ts` calls OpenAI (preferred) or Claude with your grant catalog as context (`server/chat.ts`)
 
-## Cost note (important)
+## Provider priority
 
-Neither **ChatGPT** nor **Claude** offer unlimited free API access for a public website.
+| Priority | Variable | Notes |
+|----------|----------|--------|
+| **1. OpenAI (recommended if you have credits)** | `OPENAI_API_KEY` | Uses ChatGPT models via the OpenAI API |
+| **2. Anthropic fallback** | `ANTHROPIC_API_KEY` | Used only if `OPENAI_API_KEY` is not set |
+| **3. No key** | — | Local keyword assistant (deadlines, basic eligibility, draft outlines) |
 
-| Option | Notes |
-|--------|--------|
-| **Claude (recommended)** | Matches the “Powered by Claude” label. Pay-per-use via [Anthropic Console](https://console.anthropic.com/). New accounts often include a small starter credit. |
-| **ChatGPT / OpenAI** | Paid API at [platform.openai.com](https://platform.openai.com/). Would require swapping the handler in `server/chat.ts`. |
-| **Google Gemini** | Has a more generous free tier for light traffic; also requires a code change to use the Gemini API. |
-| **No API key** | The app keeps working with the built-in local assistant (deadlines, eligibility keywords, draft outlines). |
+## Step 1 — Get an OpenAI API key
 
-For a small applicant audience, Claude API costs are usually modest if you cap `max_tokens` and keep conversations short (already set in `server/chat.ts`).
-
-## Step 1 — Get an Anthropic API key
-
-1. Sign in at [console.anthropic.com](https://console.anthropic.com/)
-2. Create an API key
-3. Add a payment method or use any starter credits on the account
+1. Sign in at [platform.openai.com](https://platform.openai.com/)
+2. Go to **API keys** and create a key
+3. Confirm your account has credits or billing enabled
 
 Keep this key **server-only**. Never put it in `VITE_*` variables or client code.
 
@@ -37,8 +32,8 @@ Project: **cangrants-betterhalf** (or your connected Vercel project)
 
 | Name | Environments | Value |
 |------|----------------|-------|
-| `ANTHROPIC_API_KEY` | Production, Preview, Development | `sk-ant-...` |
-| `ANTHROPIC_MODEL` | Optional | `claude-sonnet-4-20250514` (default) |
+| `OPENAI_API_KEY` | Production, Preview, Development | `sk-...` |
+| `OPENAI_MODEL` | Optional | `gpt-4o-mini` (default) or `gpt-4o` |
 
 Redeploy after saving variables.
 
@@ -60,7 +55,7 @@ If the API key is missing or invalid, the UI still responds using the local assi
 
 ```bash
 cp .env.example .env
-# Add ANTHROPIC_API_KEY=sk-ant-... to .env
+# Add OPENAI_API_KEY=sk-... to .env
 
 npm install
 npm run dev:api
@@ -68,12 +63,17 @@ npm run dev:api
 
 `npm run dev:api` runs `vercel dev`, which serves both the Vite app and `/api/chat`. Plain `npm run dev` only serves the frontend (chat will use the local fallback).
 
+## Model suggestions
+
+| Model | Best for |
+|-------|----------|
+| `gpt-4o-mini` | Default — lower cost, good for eligibility Q&A and drafts |
+| `gpt-4o` | Higher quality for longer proposal drafting |
+
 ## Optional improvements
 
 - **Rate limiting** — add per-user or per-IP limits in `api/chat.ts` before going viral
 - **Auth check** — require a valid Supabase session server-side for `/api/chat`
-- **OpenAI instead** — replace `generateAssistantReply` in `server/chat.ts` with the OpenAI Chat Completions API
-- **Gemini free tier** — similar swap using Google AI Studio
 
 ## Files
 
@@ -81,5 +81,5 @@ npm run dev:api
 |------|---------|
 | `src/App.tsx` | Chat UI + client `sendMessage()` |
 | `api/chat.ts` | Vercel serverless entrypoint |
-| `server/chat.ts` | System prompt, grant context, Claude API call |
+| `server/chat.ts` | System prompt, grant context, OpenAI/Anthropic API calls |
 | `src/lib/grant-assistant.ts` | Unused richer local mock (not wired to UI) |
