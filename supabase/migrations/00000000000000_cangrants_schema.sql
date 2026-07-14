@@ -9,6 +9,9 @@ create table public.profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   name text not null,
   email text not null,
+  address text,
+  city text,
+  postal text,
   province text,
   discipline text,
   career text,
@@ -166,11 +169,14 @@ security definer
 set search_path = ''
 as $$
 begin
-  insert into public.profiles (id, name, email)
+  insert into public.profiles (id, name, email, address, city, postal)
   values (
     new.id,
     coalesce(new.raw_user_meta_data ->> 'name', split_part(new.email, '@', 1)),
-    new.email
+    new.email,
+    nullif(new.raw_user_meta_data ->> 'address', ''),
+    nullif(new.raw_user_meta_data ->> 'city', ''),
+    nullif(new.raw_user_meta_data ->> 'postal', '')
   );
   return new;
 end;

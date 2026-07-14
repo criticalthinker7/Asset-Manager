@@ -138,32 +138,41 @@ export type Database = {
       };
       profiles: {
         Row: {
+          address: string | null;
           career: string | null;
+          city: string | null;
           created_at: string;
           discipline: string | null;
           email: string;
           id: string;
           name: string;
+          postal: string | null;
           province: string | null;
           updated_at: string;
         };
         Insert: {
+          address?: string | null;
           career?: string | null;
+          city?: string | null;
           created_at?: string;
           discipline?: string | null;
           email: string;
           id: string;
           name: string;
+          postal?: string | null;
           province?: string | null;
           updated_at?: string;
         };
         Update: {
+          address?: string | null;
           career?: string | null;
+          city?: string | null;
           created_at?: string;
           discipline?: string | null;
           email?: string;
           id?: string;
           name?: string;
+          postal?: string | null;
           province?: string | null;
           updated_at?: string;
         };
