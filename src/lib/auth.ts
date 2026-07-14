@@ -1,3 +1,4 @@
+import type { User } from "@supabase/supabase-js";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 import type { ProfileRow } from "@/types/database.types";
 
@@ -39,23 +40,15 @@ function profileToUser(profile: ProfileRow): UserInfo {
   };
 }
 
-export async function fetchProfile(userId: string): Promise<UserInfo> {
-  if (!supabase) throw new Error("Supabase is not configured");
-
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("id", userId)
-    .single();
-
-  if (data && !error) return profileToUser(data);
-
-  const { data: authData } = await supabase.auth.getUser();
-  const authUser = authData.user;
-  if (!authUser || authUser.id !== userId) throw new Error("Could not load profile");
-
+/**
+ * Build a UserInfo synchronously from a Supabase auth user, using the session
+ * metadata captured at sign-up. This never touches the network, so it is safe
+ * to call from inside the onAuthStateChange callback (see LockManager note in
+ * initAuth) and as a fallback when the profile row can't be loaded.
+ */
+function userFromAuthUser(authUser: User): UserInfo {
   return {
-    id: userId,
+    id: authUser.id,
     name: (authUser.user_metadata?.name as string) || authUser.email?.split("@")[0] || "Artist",
     email: authUser.email ?? "",
     address: (authUser.user_metadata?.address as string) || undefined,
@@ -67,21 +60,32 @@ export async function fetchProfile(userId: string): Promise<UserInfo> {
   };
 }
 
+export async function fetchProfile(userId: string): Promise<UserInfo> {
+  if (!supabase) throw new Error("Supabase is not configured");
+
+  const { data } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", userId)
+    .maybeSingle();
+
+  if (data) return profileToUser(data);
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const sessionUser = sessionData.session?.user;
+  if (sessionUser && sessionUser.id === userId) return userFromAuthUser(sessionUser);
+
+  return { id: userId, name: "Artist", email: "" };
+}
+
 export function getAuthRedirectUrl(): string {
   if (typeof window === "undefined") return "";
-
-  const base = import.meta.env.BASE_URL || "/";
-  const path = base === "/" ? "" : base.replace(/\/$/, "");
-  const currentUrl = `${window.location.origin}${path}`;
-  const host = window.location.hostname;
-
-  if (host === "localhost" || host === "127.0.0.1" || host.endsWith(".vercel.app")) {
-    return currentUrl;
-  }
 
   const configured = import.meta.env.VITE_SITE_URL?.replace(/\/$/, "");
   if (configured) return configured;
 
+  const base = import.meta.env.BASE_URL || "/";
+  const path = base === "/" ? "" : base.replace(/\/$/, "");
   return `${window.location.origin}${path}`;
 }
 
@@ -147,20 +151,42 @@ export function initAuth(onUser: (user: UserInfo | null) => void): () => void {
     return () => {};
   }
 
-  supabase.auth.getSession().then(({ data: { session } }) => {
+  const client = supabase;
+
+  // Hydrate the richer profile row asynchronously, deferred out of the auth
+  // callback. A failure here must never sign the user out — we keep the user
+  // reflected from the session and simply skip the enrichment.
+  const hydrateProfile = (userId: string) => {
+    setTimeout(() => {
+      fetchProfile(userId)
+        .then(onUser)
+        .catch(() => {});
+    }, 0);
+  };
+
+  client.auth.getSession().then(({ data: { session } }) => {
     if (session?.user) {
-      fetchProfile(session.user.id).then(onUser).catch(() => onUser(null));
+      onUser(userFromAuthUser(session.user));
+      hydrateProfile(session.user.id);
     } else {
       onUser(null);
     }
   });
 
-  const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-    if (session?.user) {
-      fetchProfile(session.user.id).then(onUser).catch(() => onUser(null));
-    } else {
+  const { data: { subscription } } = client.auth.onAuthStateChange((event, session) => {
+    // Avoid awaiting Supabase calls inside this callback: the auth client holds
+    // a navigator LockManager lock while it runs, and re-entrant awaited calls
+    // (e.g. fetching the profile) can deadlock. Reflect the session
+    // synchronously and defer any network work.
+    if (event === "TOKEN_REFRESHED" || event === "USER_UPDATED") return;
+
+    if (event === "SIGNED_OUT" || !session?.user) {
       onUser(null);
+      return;
     }
+
+    onUser(userFromAuthUser(session.user));
+    hydrateProfile(session.user.id);
   });
 
   return () => subscription.unsubscribe();
